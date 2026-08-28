@@ -170,6 +170,7 @@ class TestMoveParser:
         assert [e.delta_ms for e in events] == [None, 120, 130, 230]
 
     def test_invert_moves(self):
+        assert MoveParser.invert_move("") == ""
         moves = "r' U R' F R2"
         inverted = MoveParser.invert_moves(moves)
         assert inverted == ["R2", "F'", "R", "U'", "r"]

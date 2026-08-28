@@ -46,9 +46,6 @@ class MoveParser:
         "x2'": "x2", "y2'": "y2", "z2'": "z2",
     }
 
-    # Regex for valid move tokens
-    _MOVE_TOKEN_REGEX = re.compile(r"^[1-3]?[UDFBLRMESudfblrxyez][wW]?['’‘`]?2?['’‘`]?$")
-
     @classmethod
     def normalize_token(cls, token: str) -> str:
         """Normalizes a single move token into canonical Roux/WCA notation."""
@@ -128,6 +125,8 @@ class MoveParser:
     def invert_move(move_name: str) -> str:
         """Returns the algebraic inverse of a move (e.g. R -> R', R' -> R, R2 -> R2)."""
         norm = MoveParser.normalize_token(move_name)
+        if not norm:
+            return ""
         if norm.endswith("2"):
             return norm
         if norm.endswith("'"):
