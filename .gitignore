@@ -32,3 +32,8 @@ references/
 
 # Local datasets
 /data/
+
+# Agent skills & lockfiles
+.agents/
+skills-lock.json
+
