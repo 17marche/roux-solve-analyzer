@@ -30,8 +30,9 @@ scratch/
 # Reference third-party files
 references/
 
-# Local datasets
-/data/
+# Local cache
+data/.cache_reco/
+data/cache/
 
 # Agent skills & lockfiles
 .agents/
