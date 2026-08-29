@@ -173,6 +173,29 @@ class SBDetector:
                 if dr_placement_idx is None:
                     dr_placement_idx = i
 
+                pair2_type = "unknown"
+                if pair1_type == "front":
+                    pair2_type = "back"
+                elif pair1_type == "back":
+                    pair2_type = "front"
+                elif pair1_type == "both_simultaneous":
+                    pair2_type = "both_simultaneous"
+
+                # Sub-slice move strings and counts
+                dr_events = events[fb_end_idx + 1:dr_placement_idx + 1] if dr_placement_idx is not None and dr_placement_idx > fb_end_idx else []
+                dr_moves_str = " ".join(e.move for e in dr_events)
+                dr_moves_stm = len([e for e in dr_events if not e.move.startswith(('x', 'y', 'z'))])
+
+                p1_start = dr_placement_idx if dr_placement_idx is not None and dr_placement_idx > fb_end_idx else fb_end_idx
+                p1_events = events[p1_start + 1:pair1_idx + 1] if pair1_idx is not None and pair1_idx > p1_start else []
+                pair1_moves_str = " ".join(e.move for e in p1_events)
+                pair1_moves_stm = len([e for e in p1_events if not e.move.startswith(('x', 'y', 'z'))])
+
+                p2_start = pair1_idx if pair1_idx is not None and pair1_idx > fb_end_idx else p1_start
+                p2_events = events[p2_start + 1:i + 1] if i > p2_start else []
+                pair2_moves_str = " ".join(e.move for e in p2_events)
+                pair2_moves_stm = len([e for e in p2_events if not e.move.startswith(('x', 'y', 'z'))])
+
                 sb_events = events[fb_end_idx + 1:i + 1]
                 moves_stm = len([e for e in sb_events if not e.move.startswith(('x', 'y', 'z'))])
                 time_ms = sb_events[-1].timestamp_ms if sb_events and sb_events[-1].timestamp_ms is not None else None
@@ -183,10 +206,17 @@ class SBDetector:
                     move_count_stm=moves_stm,
                     time_ms=time_ms,
                     dr_placement_idx=dr_placement_idx,
+                    dr_moves_str=dr_moves_str,
+                    dr_moves_stm=dr_moves_stm,
                     sb_square_idx=sb_square_idx,
                     pair1_idx=pair1_idx,
                     pair1_type=pair1_type,
+                    pair1_moves_str=pair1_moves_str,
+                    pair1_moves_stm=pair1_moves_stm,
                     pair2_idx=pair2_idx,
+                    pair2_type=pair2_type,
+                    pair2_moves_str=pair2_moves_str,
+                    pair2_moves_stm=pair2_moves_stm,
                     rotation_count=rotation_count,
                     non_ergonomic_moves=non_ergonomic_moves,
                     moves_str=" ".join(e.move for e in sb_events)

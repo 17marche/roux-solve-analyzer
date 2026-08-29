@@ -119,3 +119,36 @@ def test_user_pb_solve_segmentation():
     assert segmented.lse is not None
     assert segmented.lse.step_4a.variant == "eolr"
     assert segmented.lse.step_4a.moves_str == "U' M' U' M'"
+
+
+def test_format_solve_report_layout_and_optional_time():
+    """Verify solve report formatting with and without time/TPS."""
+    from roux_engine.cli import format_solve_report
+
+    scramble = "B U2 L2 F U2 L2 B' D2 L2 U2 R' U2 F D U2 F' R' B D2"
+    solution = "x2 y' R U r B2 r2 F r U' R2 U R U R' U R U' R' R' U' M' U r M U M' U2 M2"
+
+    segmenter = RouxSegmenter()
+
+    # 1. Without time
+    res_no_time = segmenter.segment(scramble, solution)
+    report_no_time = format_solve_report(res_no_time)
+
+    assert "Total:    27 STM moves" in report_no_time
+    assert "• Inspection:            x2 y'" in report_no_time
+    assert "• First Block (FB):      R U r B2 r2 F // 6 moves" in report_no_time
+    assert "- Orientation:         GREEN - WHITE" in report_no_time
+    assert "• Second Block (SB):     r U' R2 / U R U R' U R U' R' / R' U' M' U r // 16 moves" in report_no_time
+    assert "- DR Placement:        3 moves" in report_no_time
+    assert "- First Pair:          Front pair - 8 moves" in report_no_time
+    assert "- Second Pair:         Back pair - 5 moves" in report_no_time
+    assert "• CMLL:                  0 moves" in report_no_time
+    assert "• LSE (Step 4):          M U M' / U2 M2 // 5 moves" in report_no_time
+    assert "- Step 4a:             3 moves // eolr_b - oriented centers" in report_no_time
+    assert "- Step 4b:             0 moves // Skip" in report_no_time
+    assert "- Step 4c:             2 moves // center_swap" in report_no_time
+
+    # 2. With optional time
+    res_with_time = segmenter.segment(scramble, solution, time_sec=9.0)
+    report_with_time = format_solve_report(res_with_time)
+    assert "Total:    27 STM moves [9.00 sec] [3.00 TPS]" in report_with_time

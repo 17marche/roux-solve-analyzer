@@ -18,24 +18,31 @@ class RouxSegmenter:
     def __init__(self, full_color_neutral: bool = False) -> None:
         self.full_color_neutral = full_color_neutral
 
-    def segment(self, scramble: str, solution: str) -> SegmentedSolve:
+    def segment(self, scramble: str, solution: str, time_sec: Optional[float] = None) -> SegmentedSolve:
         """Segments a text-based solve into Roux micro-phases."""
         events = MoveParser.parse_string(solution)
-        return self.segment_events(scramble, events)
+        return self.segment_events(scramble, events, time_sec=time_sec)
 
     def segment_stream(self, scramble: str, stream: List[Dict[str, Any]]) -> SegmentedSolve:
         """Segments a timestamped smart-cube stream into Roux micro-phases."""
         events = MoveParser.parse_smart_cube_stream(stream)
         return self.segment_events(scramble, events)
 
-    def segment_events(self, scramble: str, events: Sequence[MoveEvent]) -> SegmentedSolve:
+    def segment_events(
+        self,
+        scramble: str,
+        events: Sequence[MoveEvent],
+        time_sec: Optional[float] = None
+    ) -> SegmentedSolve:
         """Executes phase segmentation across parsed MoveEvents."""
         initial_state = CubeState()
         initial_state.apply_moves(scramble)
 
         total_stm = len([e for e in events if not e.move.startswith(('x', 'y', 'z'))])
         total_time_ms = None
-        if events and events[-1].timestamp_ms is not None:
+        if time_sec is not None and time_sec > 0:
+            total_time_ms = int(round(time_sec * 1000.0))
+        elif events and events[-1].timestamp_ms is not None:
             first_t = events[0].timestamp_ms or 0
             last_t = events[-1].timestamp_ms
             total_time_ms = max(0, last_t - first_t) if last_t is not None else None

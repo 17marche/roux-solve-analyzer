@@ -60,10 +60,17 @@ class SBPhase:
     move_count_stm: int
     time_ms: Optional[int] = None
     dr_placement_idx: Optional[int] = None
+    dr_moves_str: str = ""
+    dr_moves_stm: int = 0
     sb_square_idx: Optional[int] = None
     pair1_idx: Optional[int] = None
-    pair1_type: str = "unknown"  # "back", "front", "line_attach", "non_standard"
+    pair1_type: str = "unknown"  # "back", "front", "both_simultaneous", "unknown"
+    pair1_moves_str: str = ""
+    pair1_moves_stm: int = 0
     pair2_idx: Optional[int] = None
+    pair2_type: str = "unknown"  # "back", "front", "both_simultaneous", "unknown"
+    pair2_moves_str: str = ""
+    pair2_moves_stm: int = 0
     rotation_count: int = 0
     non_ergonomic_moves: List[str] = field(default_factory=list)
     moves_str: str = ""
