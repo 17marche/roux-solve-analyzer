@@ -39,15 +39,23 @@ class CubeState:
             centers=self.centers.copy()
         )
 
-    def is_solved(self) -> bool:
-        """Returns True if the cube is in the solved state."""
-        return (
-            np.array_equal(self.cp, np.arange(NUM_CORNERS, dtype=np.int8)) and
-            np.all(self.co == 0) and
-            np.array_equal(self.ep, np.arange(NUM_EDGES, dtype=np.int8)) and
-            np.all(self.eo == 0) and
-            np.array_equal(self.centers, np.arange(NUM_CENTERS, dtype=np.int8))
-        )
+    def is_solved(self, allow_rotations: bool = False) -> bool:
+        """Returns True if the cube is in a solved state.
+        
+        Args:
+            allow_rotations: If True, checks if the cube is solved in any of the
+                24 whole-cube rotation orientations. If False, checks strictly against
+                the canonical identity orientation.
+        """
+        if not allow_rotations:
+            return (
+                np.array_equal(self.cp, np.arange(NUM_CORNERS, dtype=np.int8)) and
+                np.all(self.co == 0) and
+                np.array_equal(self.ep, np.arange(NUM_EDGES, dtype=np.int8)) and
+                np.all(self.eo == 0) and
+                np.array_equal(self.centers, np.arange(NUM_CENTERS, dtype=np.int8))
+            )
+        return self.to_bytes() in _get_solved_rotation_bytes()
 
     def is_fb_solved(self, white_bottom: bool = True) -> bool:
         """Checks if the canonical Left First Block (1x2x3 on L face) is solved.
@@ -133,3 +141,28 @@ class CubeState:
             f"  centers={self.centers.tolist()}\n"
             f")"
         )
+
+
+_SOLVED_ROTATION_BYTES: Optional[set[bytes]] = None
+
+
+def _get_solved_rotation_bytes() -> set[bytes]:
+    """Returns the set of 42-byte binary representations for all 24 rotated solved states."""
+    global _SOLVED_ROTATION_BYTES
+    if _SOLVED_ROTATION_BYTES is None:
+        rotation_sequences = [
+            "", "x", "x2", "x'",
+            "y", "y x", "y x2", "y x'",
+            "y2", "y2 x", "y2 x2", "y2 x'",
+            "y'", "y' x", "y' x2", "y' x'",
+            "z", "z x", "z x2", "z x'",
+            "z'", "z' x", "z' x2", "z' x'"
+        ]
+        s = set()
+        for seq in rotation_sequences:
+            c = CubeState()
+            if seq:
+                c.apply_moves(seq)
+            s.add(c.to_bytes())
+        _SOLVED_ROTATION_BYTES = s
+    return _SOLVED_ROTATION_BYTES
