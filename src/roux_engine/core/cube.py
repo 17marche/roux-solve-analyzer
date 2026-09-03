@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 from dataclasses import dataclass, field
-from typing import List, Union, Tuple, Optional
+from typing import List, Union, Tuple, Optional, Sequence, TYPE_CHECKING
 import numpy as np
+
+if TYPE_CHECKING:
+    from .moves import Move
 
 from .constants import (
     NUM_CORNERS, NUM_EDGES, NUM_CENTERS,
@@ -48,7 +51,7 @@ class CubeState:
                 the canonical identity orientation.
         """
         if not allow_rotations:
-            return (
+            return bool(
                 np.array_equal(self.cp, np.arange(NUM_CORNERS, dtype=np.int8)) and
                 np.all(self.co == 0) and
                 np.array_equal(self.ep, np.arange(NUM_EDGES, dtype=np.int8)) and
@@ -112,7 +115,7 @@ class CubeState:
         from .moves import apply_move as _apply_move
         return _apply_move(self, move)
 
-    def apply_moves(self, moves: Union[str, List[Union[str, 'Move']]]) -> CubeState:
+    def apply_moves(self, moves: Union[str, Sequence[Union[str, 'Move']]]) -> CubeState:
         """Applies a sequence of moves to the cube state in-place and returns self."""
         from .moves import apply_moves as _apply_moves
         return _apply_moves(self, moves)

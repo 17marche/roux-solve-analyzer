@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 from dataclasses import dataclass
-from typing import Dict, List, Union, Tuple, Sequence
+from typing import Dict, List, Union, Tuple, Sequence, TYPE_CHECKING
 import numpy as np
+
+if TYPE_CHECKING:
+    from .cube import CubeState
 
 from .constants import NUM_CORNERS, NUM_EDGES, NUM_CENTERS
 
