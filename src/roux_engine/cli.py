@@ -164,9 +164,125 @@ def format_solve_report(solve: SegmentedSolve) -> str:
     return "\n".join(lines)
 
 
-def main(argv: Optional[list[str]] = None) -> int:
+def verify_pdb_completeness(pdb_path: Path, quiet: bool = False) -> None:
+    """Verifies that the First Block PDB file is complete, valid, and fully reachable."""
+    from .solver.fb_pdb import FBPDB, FILE_SIZE_BYTES, TOTAL_STATES
+    import numpy as np
+
+    if not quiet:
+        print("-" * 80)
+        print("  Verifying database completeness and integrity...")
+
+    pdb = FBPDB(pdb_path=pdb_path)
+    if pdb.size != TOTAL_STATES:
+        raise ValueError(f"State count mismatch: {pdb.size} != {TOTAL_STATES}")
+    if pdb.file_size_bytes != FILE_SIZE_BYTES:
+        raise ValueError(f"File size mismatch: {pdb.file_size_bytes} != {FILE_SIZE_BYTES}")
+    if pdb.get_distance(0) != 0:
+        raise ValueError(f"Canonical solved distance mismatch: {pdb.get_distance(0)} != 0")
+
+    # Verify no nibble exceeds maximum God's number depth of 9 (or unvisited 0xF)
+    raw_bytes = np.asarray(pdb._data)
+    low_nibbles = raw_bytes & 0x0F
+    high_nibbles = raw_bytes >> 4
+    if np.any(low_nibbles > 9) or np.any(high_nibbles > 9):
+        raise ValueError("Database contains corrupted or unvisited distance values (> 9)")
+
+    if not quiet:
+        print(f"  Database verified: all {TOTAL_STATES:,} states reachable within <= 9 moves.")
+        print("  Canonical solved state distance is 0.")
+        print("=" * 80)
+
+
+def handle_generate_fb_pdb(argv: list[str]) -> int:
+    """Handles the generate-fb-pdb subcommand."""
+    import time
+    from pathlib import Path
+    from .solver.pdb_generator import generate_fb_pdb, get_default_pdb_path
+    from .solver.fb_pdb import FILE_SIZE_BYTES, TOTAL_STATES
+
     parser = argparse.ArgumentParser(
-        description="Roux Speedcube Solve Segmenter and Diagnostics CLI"
+        prog="roux generate-fb-pdb",
+        description="Generate the canonical 5.32M state First Block Pattern Database (PDB)."
+    )
+    parser.add_argument(
+        "-o", "--output",
+        type=str,
+        default=None,
+        help="Custom destination path for fb_pdb.bin (default: src/roux_engine/data/fb_pdb.bin)"
+    )
+    parser.add_argument(
+        "--verify-only",
+        action="store_true",
+        help="Verify existing database file completeness and integrity without regenerating"
+    )
+    parser.add_argument(
+        "--verify",
+        action="store_true",
+        help="Alias to ensure completeness verification runs after generation (default: True)"
+    )
+    parser.add_argument(
+        "-q", "--quiet",
+        action="store_true",
+        help="Suppress depth-by-depth progress output"
+    )
+    args = parser.parse_args(argv)
+
+    out_path = Path(args.output) if args.output else get_default_pdb_path()
+
+    if args.verify_only:
+        if not args.quiet:
+            print("=" * 80)
+            print("         FIRST BLOCK PATTERN DATABASE (PDB) VERIFICATION")
+            print("=" * 80)
+            print(f"  Target file:  {out_path}")
+        verify_pdb_completeness(out_path, quiet=args.quiet)
+        return 0
+
+    if not args.quiet:
+        print("=" * 80)
+        print("           FIRST BLOCK PATTERN DATABASE (PDB) GENERATOR")
+        print("=" * 80)
+        print(f"  Target file:  {out_path}")
+        print(f"  Total states: {TOTAL_STATES:,}")
+        print(f"  Moveset:      <U, D, R, F, B, r, M> (21 moves, ADR-0001)")
+        print(f"  Storage:      4-bit nibbles ({FILE_SIZE_BYTES:,} bytes)")
+        print("-" * 80)
+        print(f"  {'Depth':<7} | {'New States':<14} | {'Total States':<14} | {'Layer Time':<10}")
+        print("-" * 80)
+
+    t0 = time.time()
+
+    def progress_callback(depth: int, num_new: int, total: int, elapsed: float) -> None:
+        if not args.quiet:
+            print(f"  Depth {depth:<2} | {num_new:>14,} | {total:>14,} | {elapsed:>8.2f}s", flush=True)
+
+    generated_path = generate_fb_pdb(output_path=out_path, progress_callback=progress_callback)
+    total_time = time.time() - t0
+
+    if not args.quiet:
+        print("-" * 80)
+        print(f"  Generation finished in {total_time:.2f}s.")
+        print(f"  Saved to {generated_path} ({generated_path.stat().st_size:,} bytes).")
+
+    # Verify table completeness by default
+    verify_pdb_completeness(generated_path, quiet=args.quiet)
+
+    return 0
+
+
+
+def main(argv: Optional[list[str]] = None) -> int:
+    if argv is None:
+        argv = sys.argv[1:]
+
+    if argv and argv[0] == "generate-fb-pdb":
+        return handle_generate_fb_pdb(argv[1:])
+
+    parser = argparse.ArgumentParser(
+        prog="roux",
+        description="Roux Speedcube Solve Segmenter and Diagnostics CLI",
+        epilog="Subcommands:\n  generate-fb-pdb    Generate First Block Pattern Database",
     )
     parser.add_argument("-s", "--scramble", type=str, help="Scramble move sequence")
     parser.add_argument("-sol", "--solution", type=str, help="Solution move sequence")
@@ -175,6 +291,7 @@ def main(argv: Optional[list[str]] = None) -> int:
     parser.add_argument("--color-neutral", action="store_true", help="Enable 24-orientation full color neutrality")
 
     args = parser.parse_args(argv)
+
 
     scramble = args.scramble
     solution = args.solution
