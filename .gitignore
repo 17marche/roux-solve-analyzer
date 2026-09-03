@@ -38,3 +38,11 @@ data/cache/
 .agents/
 skills-lock.json
 
+# Agent workflows, local notes & specs
+AGENTS.md
+CLAUDE.md
+docs/agents/
+.scratch/
+CONTEXT.md
+docs/adr/
+

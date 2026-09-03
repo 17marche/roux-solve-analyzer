@@ -32,6 +32,13 @@ The development of the Roux AI Speedcube Coach is broken down into **6 sequentia
                                        │
                                        ▼
 ┌─────────────────────────────────────────────────────────────────────────────┐
+│ Milestone 3.5: Second Block (SB) PDB & Heuristic Solver                     │
+│ -> 1.08M State SB PDB (~544KB) in <R, U, r, M> with FB preserved           │
+│ -> Blockbuilding Path Search (Free, DR + 2 pairs, Square + pair)            │
+└──────────────────────────────────────┬──────────────────────────────────────┘
+                                       │
+                                       ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
 │ Milestone 4: Empirical Transition Matrix & Biomechanical Flow Scorer        │
 │ -> Bigram Latency Tables (2H & OH), Regrip & Micro-Pause Detector           │
 │ -> Ingestion & Calibration of 528-pair 2-gram transition datasets           │
@@ -94,17 +101,33 @@ The development of the Roux AI Speedcube Coach is broken down into **6 sequentia
 ---
 
 ### Milestone 3: Pattern Databases (PDB) & IDA* Heuristic Solver
-* **Goal:** Precompute mathematical lower-bound lookup tables and build an $IDA^*$ search engine to generate top-$K$ candidate solutions.
+* **Goal:** Precompute mathematical lower-bound lookup tables and build an $IDA^*$ search engine to generate top-$K$ candidate solutions for First Block and Last Six Edges.
 * **Key Modules:**
-  * `src/roux_engine/solver/pdb_generator.py`: Generates the **5.32M state canonical FB PDB** via Breadth-First Search (BFS) in NumPy and serializes to packed bytes (`fb_pdb.npy`, ~2.66 MB).
+  * `src/roux_engine/solver/pdb_generator.py`: Generates the **5.32M state canonical FB PDB** via Breadth-First Search (BFS) using ergonomic moveset $\langle U, D, R, F, B, r, M \rangle$ (omitting physical $L$ face turns, per ADR-0001) and serializes to packed 4-bit nibble bytes (`fb_pdb.bin`, ~2.66 MB).
   * `src/roux_engine/solver/symmetry.py`: Canonical symmetry re-mapping applying the $x2y$ automorphism group $G = \{I, y, y2, y', x2, x2y, x2y2, x2y'\}$ to query all 8 dual-neutral First Blocks from a single database.
-  * `src/roux_engine/solver/lse_solver.py`: Complete 7,680-state in-memory LSE graph lookup table for instant optimal EOLR and 4c solutions.
-  * `src/roux_engine/solver/ida_star.py`: Multi-path $IDA^*$ search finding the top-$K$ shortest candidate paths for any given phase.
+  * `src/roux_engine/solver/lse_solver.py`: Complete 7,680-state in-memory LSE graph dynamically generated at startup for instant optimal Step 4a (EO / EOLR / EOLR-b), Step 4b, and Step 4c solutions.
+  * `src/roux_engine/solver/ida_star.py`: Multi-path $IDA^*$ search finding the top-$K$ shortest candidate paths for First Block across dual-neutral orientations.
 * **Reference Integration:** Adapt state indexing techniques from `onionhoney/roux-trainers/src/lib/Pruner.tsx` and `Solver.tsx`.
 * **Testing & Verification:**
   * Verify PDB lookups are strictly admissible ($h(s) \le \text{true distance}$).
   * Verify optimal FB search finds 5-move and 6-move solutions in $< 1\text{ms}$.
-* **Acceptance Criteria:** Single lookup latency $< 1\mu\text{s}$; total PDB memory $< 3\text{ MB}$.
+  * Verify LSE solver returns correct optimal paths for all sub-steps (EO, EOLR, 4b, 4c).
+* **Acceptance Criteria:** Single lookup latency $< 1\mu\text{s}$; total PDB memory $< 3\text{ MB}$; 100% deterministic test coverage.
+
+---
+
+### Milestone 3.5: Second Block (SB) PDB & Heuristic Solver
+* **Goal:** Build an exact Pattern Database and search engine for Second Block ($DR, FR, BR$ edges + $DFR, DBR$ corners) preserving the solved First Block.
+* **Key Modules:**
+  * `src/roux_engine/solver/sb_pdb.py`: Generates the **1.08M state SB PDB** ($4{,}032 \times 270 = 1{,}088{,}640$ states, ~544 KB packed) in the $\langle R, U, r, M \rangle$ generator.
+  * `src/roux_engine/solver/sb_solver.py`: Search engine evaluating distinct blockbuilding styles:
+    * Free blockbuilding (direct shortest path).
+    * Classical standard ($DR$ edge first $\rightarrow$ 2 pairs).
+    * Square + pair building.
+* **Testing & Verification:**
+  * Benchmark against human reconstructors' SB solutions in `roux_solves.json`.
+* **Acceptance Criteria:** SB PDB size $< 600\text{ KB}$, candidate search $< 10\text{ms}$.
+
 
 ---
 
