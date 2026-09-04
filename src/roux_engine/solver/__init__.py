@@ -15,6 +15,8 @@ from .symmetry import (
     is_fb_solved_for_symmetry,
 )
 
+from .lse_solver import LSEGraph, LSESolution, solve_lse
+
 __all__ = [
     "FBIndexer",
     "FBPlacement",
@@ -31,6 +33,9 @@ __all__ = [
     "conjugate_cube",
     "extract_canonical_placement",
     "is_fb_solved_for_symmetry",
+    "LSEGraph",
+    "LSESolution",
+    "solve_lse",
 ]
 
 
