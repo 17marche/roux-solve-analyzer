@@ -44,6 +44,14 @@ class TestFBSolutionInterface:
         with pytest.raises((AttributeError, TypeError)):
             sol.move_count = 3  # type: ignore
 
+    def test_ida_star_module_imports(self):
+        """Verify roux_engine.solver.ida_star module exports expected public API."""
+        from roux_engine.solver import ida_star
+        assert hasattr(ida_star, "FBSolution")
+        assert hasattr(ida_star, "FBSolver")
+        assert hasattr(ida_star, "solve_fb")
+
+
     def test_invalid_k_raises_value_error(self):
         """Requesting k <= 0 must raise ValueError."""
         with pytest.raises(ValueError):
@@ -285,3 +293,38 @@ class TestDatasetIntegrationAndPerformance:
         avg_ms = sum(durations) / len(durations)
         print(f"\nBatch 20 solves: avg={avg_ms:.2f}ms, max={max(durations):.2f}ms")
         assert avg_ms < 10.0, f"Average query latency {avg_ms:.2f}ms exceeded 10ms"
+
+    def test_optimal_fb_search_5_and_6_moves_sub_millisecond(self):
+        """Verify optimal FB search finds 5-move and 6-move solutions in < 1ms (Roadmap criterion)."""
+        import time
+
+        # 5-move scramble
+        moves_5 = "D F r U M"
+        c5 = CubeState().apply_moves(moves_5)
+        # Warmup
+        solve_fb(c5, k=1, orientation="YELLOW-ORANGE")
+
+        t0 = time.perf_counter()
+        sols_5 = solve_fb(c5, k=1, orientation="YELLOW-ORANGE")
+        t5_ms = (time.perf_counter() - t0) * 1000.0
+
+        assert len(sols_5) >= 1
+        assert sols_5[0].move_count <= 5
+        assert_physically_solves_fb(c5, sols_5[0])
+        assert t5_ms < 1.0, f"5-move optimal search took {t5_ms:.2f}ms, expected < 1.0ms"
+
+        # 6-move scramble
+        moves_6 = "D F r B M U"
+        c6 = CubeState().apply_moves(moves_6)
+        # Warmup
+        solve_fb(c6, k=1, orientation="YELLOW-ORANGE")
+
+        t0 = time.perf_counter()
+        sols_6 = solve_fb(c6, k=1, orientation="YELLOW-ORANGE")
+        t6_ms = (time.perf_counter() - t0) * 1000.0
+
+        assert len(sols_6) >= 1
+        assert sols_6[0].move_count <= 6
+        assert_physically_solves_fb(c6, sols_6[0])
+        assert t6_ms < 1.0, f"6-move optimal search took {t6_ms:.2f}ms, expected < 1.0ms"
+
