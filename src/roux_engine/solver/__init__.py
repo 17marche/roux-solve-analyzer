@@ -15,7 +15,7 @@ from .symmetry import (
     is_fb_solved_for_symmetry,
 )
 
-from .lse_solver import LSEGraph, LSESolution, solve_lse
+from .lse_solver import LSEGraph, LSESolution, LSEPath, solve_lse, solve_lse_paths
 
 __all__ = [
     "FBIndexer",
@@ -35,7 +35,9 @@ __all__ = [
     "is_fb_solved_for_symmetry",
     "LSEGraph",
     "LSESolution",
+    "LSEPath",
     "solve_lse",
+    "solve_lse_paths",
 ]
 
 

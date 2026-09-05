@@ -3,7 +3,7 @@
 import time
 import pytest
 from roux_engine.core.cube import CubeState
-from roux_engine.solver.lse_solver import LSEGraph, LSESolution, solve_lse
+from roux_engine.solver.lse_solver import LSEGraph, LSESolution, LSEPath, solve_lse, solve_lse_paths
 
 
 def test_lse_graph_initialization_and_state_count():
@@ -249,9 +249,16 @@ def test_lse_allow_misoriented_centers():
     assert sim_aligned.centers[0] in (0, 1)
 
     # 2. Misoriented centers enabled
-    sols_misoriented = solve_lse(cube, target="4a", allow_misoriented_centers=True)
-    assert len(sols_misoriented) >= 1
-    sol_mis = sols_misoriented[0]
+    # Standard EO must remain axis-aligned (7 moves) even when allow_misoriented_centers=True
+    sols_std = solve_lse(cube, target="standard_eo", allow_misoriented_centers=True)
+    assert len(sols_std) == 1
+    assert sols_std[0].move_count == 7
+    assert sols_std[0].center_state == "axis_aligned"
+
+    # EOLR with allow_misoriented_centers=True finds the 5-move misaligned solution
+    sols_eolr = solve_lse(cube, target="eolr", allow_misoriented_centers=True)
+    assert len(sols_eolr) == 1
+    sol_mis = sols_eolr[0]
     assert sol_mis.move_count == 5
     assert sol_mis.moves == ["M'", "U'", "M'", "U", "M'"]
     assert sol_mis.center_state == "misaligned"
@@ -268,12 +275,39 @@ def test_lse_allow_misoriented_centers():
     for pos in (Edge.UF, Edge.UL, Edge.UB, Edge.UR):
         assert sim_mis.eo[pos] == 1
 
-    # 3. EOLR target with allow_misoriented_centers=True
-    sols_eolr = solve_lse(cube, target="eolr", allow_misoriented_centers=True)
-    assert len(sols_eolr) == 1
-    assert sols_eolr[0].move_count == 5
-    assert sols_eolr[0].case_name == "eolr"
-    assert sols_eolr[0].center_state == "misaligned"
+
+def test_lse_solve_paths_all_routes():
+    """Verify solve_lse_paths produces valid 4-stage paths (standard, eolr, eolr_misoriented, eolr_b)."""
+    scrambles = [
+        "M U' M U M2 U M U M' U2",
+        "M U' M U2 M U' M' U M2 U' M2",
+        "M' U2 M U M2",
+        "M2 U2 M2",
+        "M",
+    ]
+    for sc in scrambles:
+        cube = CubeState().apply_moves(sc)
+        paths = solve_lse_paths(cube)
+
+        assert "standard" in paths
+        assert "eolr" in paths
+        assert "eolr_misoriented" in paths
+        assert "eolr_b" in paths
+
+        for name, path in paths.items():
+            assert isinstance(path, LSEPath)
+            assert path.name == name
+            # Each path must fully solve the cube
+            sim = cube.copy().apply_moves(path.total_moves)
+            assert sim.is_solved(), f"Path {name} failed to solve cube for scramble: {sc}"
+            assert path.total_move_count == len(path.total_moves)
+
+    # Also test on already solved cube
+    solved_paths = solve_lse_paths(CubeState())
+    for name, path in solved_paths.items():
+        assert path.total_move_count == 0
+        assert path.total_moves == []
+
 
 
 
