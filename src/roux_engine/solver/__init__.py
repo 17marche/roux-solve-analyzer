@@ -16,6 +16,7 @@ from .symmetry import (
 )
 
 from .lse_solver import LSEGraph, LSESolution, LSEPath, solve_lse, solve_lse_paths
+from .fb_solver import FBSolution, FBSolver, solve_fb, normalize_rotations
 
 __all__ = [
     "FBIndexer",
@@ -38,6 +39,10 @@ __all__ = [
     "LSEPath",
     "solve_lse",
     "solve_lse_paths",
+    "FBSolution",
+    "FBSolver",
+    "solve_fb",
+    "normalize_rotations",
 ]
 
 
