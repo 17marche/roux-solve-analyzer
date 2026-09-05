@@ -149,6 +149,7 @@ class LSESolution:
     moves: list[str]
     move_count: int
     case_name: str
+    center_state: str = "axis_aligned"
 
 
 class LSEGraph:
@@ -198,12 +199,21 @@ class LSEGraph:
 
         # Lazy-initialized tables for sub-step solvers
         self._tables_initialized = False
+        # Aligned center targets (ca == 1)
         self.std_eo_targets: Set[int] = set()
         self.eolr_targets: Set[int] = set()
         self.eolr_b_targets: Set[int] = set()
         self.first_move_std_eo: Dict[int, int] = {}
         self.first_move_eolr: Dict[int, int] = {}
         self.first_move_eolr_b: Dict[int, int] = {}
+
+        # Any center targets (aligned ca == 1 OR misaligned ca == 0)
+        self.std_eo_any_targets: Set[int] = set()
+        self.eolr_any_targets: Set[int] = set()
+        self.eolr_b_any_targets: Set[int] = set()
+        self.first_move_std_eo_any: Dict[int, int] = {}
+        self.first_move_eolr_any: Dict[int, int] = {}
+        self.first_move_eolr_b_any: Dict[int, int] = {}
 
     def _ensure_4a_tables(self) -> None:
         """Precomputes backward BFS shortest paths for standard EO, EOLR, and EOLR-b on first access."""
@@ -213,19 +223,36 @@ class LSEGraph:
         for code in self.id_to_state:
             eo = (code >> 3) & 63
             ca = (code >> 2) & 1
+            ul = (code >> 12) & 7
+            ur = (code >> 9) & 7
+            co = code & 3
+
+            # 1. Aligned centers (ca == 1, eo == 0)
             if eo == 0 and ca == 1:
                 self.std_eo_targets.add(code)
-                ul = (code >> 12) & 7
-                ur = (code >> 9) & 7
-                co = code & 3
+                self.std_eo_any_targets.add(code)
                 if {ul, ur} == {4, 5}:
                     self.eolr_targets.add(code)
+                    self.eolr_any_targets.add(code)
                 if ul == (1 - co) % 4 and ur == (3 - co) % 4:
                     self.eolr_b_targets.add(code)
+                    self.eolr_b_any_targets.add(code)
+
+            # 2. Misaligned centers (ca == 0, UL/UR eo=0, 4 M-edges eo=1)
+            elif ca == 0 and eo == (63 ^ (1 << ul) ^ (1 << ur)):
+                self.std_eo_any_targets.add(code)
+                if {ul, ur} == {4, 5}:
+                    self.eolr_any_targets.add(code)
+                if ul == (1 - co) % 4 and ur == (3 - co) % 4:
+                    self.eolr_b_any_targets.add(code)
 
         self._bfs_target_set(self.std_eo_targets, self.first_move_std_eo)
         self._bfs_target_set(self.eolr_targets, self.first_move_eolr)
         self._bfs_target_set(self.eolr_b_targets, self.first_move_eolr_b)
+
+        self._bfs_target_set(self.std_eo_any_targets, self.first_move_std_eo_any)
+        self._bfs_target_set(self.eolr_any_targets, self.first_move_eolr_any)
+        self._bfs_target_set(self.eolr_b_any_targets, self.first_move_eolr_b_any)
         self._tables_initialized = True
 
     def _bfs_target_set(self, target_set: Set[int], first_move_table: Dict[int, int]) -> None:
@@ -245,10 +272,12 @@ class LSEGraph:
                     first_move_table[u] = m_idx
                     q.append(u)
 
-    def _reconstruct_path(self, start_code: int, first_move_table: Dict[int, int], target_set: Set[int]) -> list[str]:
-        """Reconstructs shortest move sequence from start_code to target_set."""
+    def _reconstruct_path(
+        self, start_code: int, first_move_table: Dict[int, int], target_set: Set[int]
+    ) -> tuple[list[str], int]:
+        """Reconstructs shortest move sequence from start_code to target_set and returns (moves, end_code)."""
         if start_code in target_set:
-            return []
+            return [], start_code
         moves: list[str] = []
         curr = start_code
         while curr not in target_set:
@@ -257,7 +286,7 @@ class LSEGraph:
             m_idx = first_move_table[curr]
             moves.append(MOVE_NAMES[m_idx])
             curr = _STEP_FNS[m_idx](curr)
-        return moves
+        return moves, curr
 
     def __len__(self) -> int:
         return len(self.id_to_state)
@@ -297,18 +326,24 @@ class LSEGraph:
         code = self.encode_cube(cube)
         return code in self.state_to_id
 
-    def query_move(self, state_or_code: int | CubeState, target: str = "4a") -> Optional[str]:
+    def query_move(
+        self,
+        state_or_code: int | CubeState,
+        target: str = "4a",
+        allow_misoriented_centers: bool = False,
+    ) -> Optional[str]:
         """Returns the single next optimal move in O(1) time (< 1µs) towards the given target."""
         self._ensure_4a_tables()
         code = self.encode_cube(state_or_code) if isinstance(state_or_code, CubeState) else state_or_code
         if target in ("4a", "eo", "standard_eo"):
-            m_idx = self.first_move_std_eo.get(code)
+            table = self.first_move_std_eo_any if allow_misoriented_centers else self.first_move_std_eo
         elif target == "eolr":
-            m_idx = self.first_move_eolr.get(code)
+            table = self.first_move_eolr_any if allow_misoriented_centers else self.first_move_eolr
         elif target in ("4b", "eolr_b", "ul_ur"):
-            m_idx = self.first_move_eolr_b.get(code)
+            table = self.first_move_eolr_b_any if allow_misoriented_centers else self.first_move_eolr_b
         else:
             raise ValueError(f"Unsupported target for single-move query: {target}")
+        m_idx = table.get(code)
         return MOVE_NAMES[m_idx] if m_idx is not None else None
 
     @staticmethod
@@ -322,7 +357,12 @@ class LSEGraph:
         ur = (code >> 9) & 7
         return ul == (1 - co) % 4 and ur == (3 - co) % 4
 
-    def solve(self, cube: CubeState, target: str = "all") -> list[LSESolution]:
+    def solve(
+        self,
+        cube: CubeState,
+        target: str = "all",
+        allow_misoriented_centers: bool = False,
+    ) -> list[LSESolution]:
         """Solves the requested LSE target(s) for the given cube state."""
         valid_targets = ("all", "4a", "eo", "standard_eo", "eolr", "eolr_b", "4b", "ul_ur", "4c", "lse", "1look")
         if target not in valid_targets:
@@ -332,58 +372,82 @@ class LSEGraph:
 
         if cube.is_solved():
             if target in ("all", "4a", "eo", "standard_eo", "eolr", "eolr_b"):
-                solutions.append(LSESolution(target="4a", moves=[], move_count=0, case_name="eolr_b"))
+                solutions.append(LSESolution(target="4a", moves=[], move_count=0, case_name="eolr_b", center_state="axis_aligned"))
             if target in ("all", "4b", "ul_ur"):
-                solutions.append(LSESolution(target="4b", moves=[], move_count=0, case_name="ul_ur_solved"))
+                solutions.append(LSESolution(target="4b", moves=[], move_count=0, case_name="ul_ur_solved", center_state="axis_aligned"))
             if target in ("all", "4c"):
-                solutions.append(LSESolution(target="4c", moves=[], move_count=0, case_name="solved"))
+                solutions.append(LSESolution(target="4c", moves=[], move_count=0, case_name="solved", center_state="axis_aligned"))
             if target in ("all", "lse", "1look"):
-                solutions.append(LSESolution(target="lse", moves=[], move_count=0, case_name="solved"))
+                solutions.append(LSESolution(target="lse", moves=[], move_count=0, case_name="solved", center_state="axis_aligned"))
             return solutions
 
         self._ensure_4a_tables()
         code = self.encode_cube(cube)
 
+        if allow_misoriented_centers:
+            std_targets = self.std_eo_any_targets
+            eolr_targets = self.eolr_any_targets
+            eolr_b_targets = self.eolr_b_any_targets
+            first_move_std = self.first_move_std_eo_any
+            first_move_eolr = self.first_move_eolr_any
+            first_move_eolr_b = self.first_move_eolr_b_any
+        else:
+            std_targets = self.std_eo_targets
+            eolr_targets = self.eolr_targets
+            eolr_b_targets = self.eolr_b_targets
+            first_move_std = self.first_move_std_eo
+            first_move_eolr = self.first_move_eolr
+            first_move_eolr_b = self.first_move_eolr_b
+
         # 1. Step 4a targets
         if target in ("all", "4a", "eo", "standard_eo"):
-            if code in self.std_eo_targets:
-                case = "eolr_b" if code in self.eolr_b_targets else ("eolr" if code in self.eolr_targets else "standard_eo")
-                solutions.append(LSESolution(target="4a", moves=[], move_count=0, case_name=case))
+            if code in std_targets:
+                case = "eolr_b" if code in eolr_b_targets else ("eolr" if code in eolr_targets else "standard_eo")
+                c_state = "axis_aligned" if ((code >> 2) & 1) == 1 else "misaligned"
+                solutions.append(LSESolution(target="4a", moves=[], move_count=0, case_name=case, center_state=c_state))
             else:
-                moves_std = self._reconstruct_path(code, self.first_move_std_eo, self.std_eo_targets)
-                solutions.append(LSESolution(target="4a", moves=moves_std, move_count=len(moves_std), case_name="standard_eo"))
+                moves_std, end_code = self._reconstruct_path(code, first_move_std, std_targets)
+                c_state = "axis_aligned" if ((end_code >> 2) & 1) == 1 else "misaligned"
+                solutions.append(LSESolution(target="4a", moves=moves_std, move_count=len(moves_std), case_name="standard_eo", center_state=c_state))
 
         if target in ("all", "4a", "eolr"):
-            if code in self.eolr_targets or code in self.eolr_b_targets:
-                case = "eolr_b" if code in self.eolr_b_targets else "eolr"
+            if code in eolr_targets or code in eolr_b_targets:
+                case = "eolr_b" if code in eolr_b_targets else "eolr"
                 if not any(s.case_name == case for s in solutions):
-                    solutions.append(LSESolution(target="4a", moves=[], move_count=0, case_name=case))
+                    c_state = "axis_aligned" if ((code >> 2) & 1) == 1 else "misaligned"
+                    solutions.append(LSESolution(target="4a", moves=[], move_count=0, case_name=case, center_state=c_state))
             else:
-                moves_eolr = self._reconstruct_path(code, self.first_move_eolr, self.eolr_targets)
-                solutions.append(LSESolution(target="4a", moves=moves_eolr, move_count=len(moves_eolr), case_name="eolr"))
+                moves_eolr, end_code = self._reconstruct_path(code, first_move_eolr, eolr_targets)
+                c_state = "axis_aligned" if ((end_code >> 2) & 1) == 1 else "misaligned"
+                solutions.append(LSESolution(target="4a", moves=moves_eolr, move_count=len(moves_eolr), case_name="eolr", center_state=c_state))
 
         if target in ("all", "4a", "eolr_b"):
-            if code in self.eolr_b_targets:
+            if code in eolr_b_targets:
                 if not any(s.case_name == "eolr_b" for s in solutions):
-                    solutions.append(LSESolution(target="4a", moves=[], move_count=0, case_name="eolr_b"))
+                    c_state = "axis_aligned" if ((code >> 2) & 1) == 1 else "misaligned"
+                    solutions.append(LSESolution(target="4a", moves=[], move_count=0, case_name="eolr_b", center_state=c_state))
             else:
-                moves_eolr_b = self._reconstruct_path(code, self.first_move_eolr_b, self.eolr_b_targets)
-                solutions.append(LSESolution(target="4a", moves=moves_eolr_b, move_count=len(moves_eolr_b), case_name="eolr_b"))
+                moves_eolr_b, end_code = self._reconstruct_path(code, first_move_eolr_b, eolr_b_targets)
+                c_state = "axis_aligned" if ((end_code >> 2) & 1) == 1 else "misaligned"
+                solutions.append(LSESolution(target="4a", moves=moves_eolr_b, move_count=len(moves_eolr_b), case_name="eolr_b", center_state=c_state))
 
         # 2. Step 4b target (UL/UR top slot placement)
         if target in ("all", "4b", "ul_ur"):
-            if code in self.eolr_b_targets:
-                solutions.append(LSESolution(target="4b", moves=[], move_count=0, case_name="ul_ur_solved"))
+            if code in eolr_b_targets:
+                c_state = "axis_aligned" if ((code >> 2) & 1) == 1 else "misaligned"
+                solutions.append(LSESolution(target="4b", moves=[], move_count=0, case_name="ul_ur_solved", center_state=c_state))
             else:
-                moves_4b = self._reconstruct_path(code, self.first_move_eolr_b, self.eolr_b_targets)
-                solutions.append(LSESolution(target="4b", moves=moves_4b, move_count=len(moves_4b), case_name="ul_ur"))
+                moves_4b, end_code = self._reconstruct_path(code, first_move_eolr_b, eolr_b_targets)
+                c_state = "axis_aligned" if ((end_code >> 2) & 1) == 1 else "misaligned"
+                solutions.append(LSESolution(target="4b", moves=moves_4b, move_count=len(moves_4b), case_name="ul_ur", center_state=c_state))
 
         # 3. Step 4c target (M-slice & center permutation)
         if target in ("all", "4c"):
             if self.is_in_4c(code):
                 key = (int(cube.ep[0]), int(cube.ep[2]), int(cube.ep[4]), int(cube.ep[6]), int(cube.centers[0]), int(cube.centers[1]), int(cube.cp[0]))
                 case_name, moves_4c = LSE_4C_SOLUTIONS[key]
-                solutions.append(LSESolution(target="4c", moves=list(moves_4c), move_count=len(moves_4c), case_name=case_name))
+                c_state = "axis_aligned" if ((code >> 2) & 1) == 1 else "misaligned"
+                solutions.append(LSESolution(target="4c", moves=list(moves_4c), move_count=len(moves_4c), case_name=case_name, center_state=c_state))
             elif target == "4c":
                 raise ValueError("Cube is not in a valid Step 4c state (UL/UR edges and EO must be solved).")
 
@@ -392,26 +456,31 @@ class LSEGraph:
             if self.is_in_4c(code):
                 key = (int(cube.ep[0]), int(cube.ep[2]), int(cube.ep[4]), int(cube.ep[6]), int(cube.centers[0]), int(cube.centers[1]), int(cube.cp[0]))
                 case_name, moves_4c = LSE_4C_SOLUTIONS[key]
-                solutions.append(LSESolution(target="lse", moves=list(moves_4c), move_count=len(moves_4c), case_name="1look"))
+                solutions.append(LSESolution(target="lse", moves=list(moves_4c), move_count=len(moves_4c), case_name="1look", center_state="axis_aligned"))
             else:
-                path_4b = self._reconstruct_path(code, self.first_move_eolr_b, self.eolr_b_targets)
+                path_4b, _ = self._reconstruct_path(code, self.first_move_eolr_b, self.eolr_b_targets)
                 sim = cube.copy().apply_moves(path_4b)
                 k_4c = (int(sim.ep[0]), int(sim.ep[2]), int(sim.ep[4]), int(sim.ep[6]), int(sim.centers[0]), int(sim.centers[1]), int(sim.cp[0]))
                 if k_4c in LSE_4C_SOLUTIONS:
                     _, path_4c = LSE_4C_SOLUTIONS[k_4c]
                     full_moves = cancel_moves(path_4b + list(path_4c))
-                    solutions.append(LSESolution(target="lse", moves=full_moves, move_count=len(full_moves), case_name="1look"))
+                    solutions.append(LSESolution(target="lse", moves=full_moves, move_count=len(full_moves), case_name="1look", center_state="axis_aligned"))
                 else:
                     raise ValueError("Failed to reach a valid Step 4c configuration from 4b.")
 
         return solutions
 
 
-
-
-
-def solve_lse(cube: CubeState, target: str = "all") -> list[LSESolution]:
+def solve_lse(
+    cube: CubeState,
+    target: str = "all",
+    allow_misoriented_centers: bool = False,
+) -> list[LSESolution]:
     """Surfaces optimal paths for Step 4a, 4b, 4c, and 1-look global LSE."""
     graph = LSEGraph.get_instance()
-    return graph.solve(cube, target=target)
+    return graph.solve(
+        cube,
+        target=target,
+        allow_misoriented_centers=allow_misoriented_centers,
+    )
 

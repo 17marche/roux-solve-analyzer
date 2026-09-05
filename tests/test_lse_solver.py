@@ -232,6 +232,51 @@ def test_lse_query_latency_microsecond():
     assert avg_latency_us < 1.0, f"Average query latency {avg_latency_us:.3f}µs exceeded 1µs limit"
 
 
+def test_lse_allow_misoriented_centers():
+    """Verify solve_lse with allow_misoriented_centers finds shorter misaligned EO / EOLR solutions."""
+    from roux_engine.core.constants import Edge
+
+    scramble = "M U' M U M2 U M U M' U2"
+    cube = CubeState().apply_moves(scramble)
+
+    # 1. Default (aligned centers only)
+    sols_aligned = solve_lse(cube, target="4a", allow_misoriented_centers=False)
+    assert len(sols_aligned) >= 1
+    sol_aligned = sols_aligned[0]
+    assert sol_aligned.move_count == 7
+    assert sol_aligned.center_state == "axis_aligned"
+    sim_aligned = cube.copy().apply_moves(sol_aligned.moves)
+    assert sim_aligned.centers[0] in (0, 1)
+
+    # 2. Misoriented centers enabled
+    sols_misoriented = solve_lse(cube, target="4a", allow_misoriented_centers=True)
+    assert len(sols_misoriented) >= 1
+    sol_mis = sols_misoriented[0]
+    assert sol_mis.move_count == 5
+    assert sol_mis.moves == ["M'", "U'", "M'", "U", "M'"]
+    assert sol_mis.center_state == "misaligned"
+
+    sim_mis = cube.copy().apply_moves(sol_mis.moves)
+    # Centers are on F/B axis (Blue/Green)
+    assert sim_mis.centers[0] in (2, 3)
+    # Both UL and UR pieces are placed in DF/DB slots (EOLR)
+    assert {int(sim_mis.ep[Edge.DF]), int(sim_mis.ep[Edge.DB])} == {Edge.UL, Edge.UR}
+    # UL and UR have White/Yellow facing D (eo == 0)
+    assert sim_mis.eo[Edge.DF] == 0
+    assert sim_mis.eo[Edge.DB] == 0
+    # The other 4 edges (M-slice in U layer) have their F/B colors facing U/D (eo == 1)
+    for pos in (Edge.UF, Edge.UL, Edge.UB, Edge.UR):
+        assert sim_mis.eo[pos] == 1
+
+    # 3. EOLR target with allow_misoriented_centers=True
+    sols_eolr = solve_lse(cube, target="eolr", allow_misoriented_centers=True)
+    assert len(sols_eolr) == 1
+    assert sols_eolr[0].move_count == 5
+    assert sols_eolr[0].case_name == "eolr"
+    assert sols_eolr[0].center_state == "misaligned"
+
+
+
 
 
 
