@@ -1,10 +1,20 @@
-"""Tests for multi-path IDA* First Block solver and public API."""
+"""Tests for Top-K Candidate Search IDA* First Block solver and public API."""
 
 import pytest
 from roux_engine.core.cube import CubeState
 from roux_engine.core.constants import Color
 from roux_engine.solver import FBSolution, solve_fb
-from roux_engine.solver.symmetry import CanonicalSymmetry
+from roux_engine.solver.symmetry import CanonicalSymmetry, get_symmetry, is_fb_solved_for_symmetry
+
+
+def assert_physically_solves_fb(cube: CubeState, solution: FBSolution) -> None:
+    """Helper verifying that applying solution from its inspection frame solves First Block."""
+    c = cube.copy()
+    if solution.inspection_rotation:
+        c.apply_moves(solution.inspection_rotation)
+    c.apply_moves(" ".join(solution.moves))
+    sym = get_symmetry(solution.orientation)
+    assert is_fb_solved_for_symmetry(c, sym, inspected=True)
 
 
 class TestFBSolutionInterface:
@@ -66,17 +76,10 @@ class TestOptimalSearchAndPhysicalVerification:
         assert best.orientation == "WHITE-BLUE"
 
         # Physically verify
-        c_test = c.copy()
-        if best.inspection_rotation:
-            c_test.apply_moves(best.inspection_rotation)
-        c_test.apply_moves(" ".join(best.moves))
-        sym = CanonicalSymmetry.X2_Y
-        from roux_engine.solver.symmetry import is_fb_solved_for_symmetry
-        assert is_fb_solved_for_symmetry(c_test, sym, inspected=True)
+        assert_physically_solves_fb(c, best)
 
     def test_two_move_scramble_physical_verification(self):
         """A 2-move scramble is solved in <= 2 moves and physically solves First Block."""
-        from roux_engine.solver.symmetry import is_fb_solved_for_symmetry, get_symmetry
         scramble = "R2 B2"
         c = CubeState().apply_moves(scramble)
         solutions = solve_fb(c, k=5)
@@ -85,12 +88,7 @@ class TestOptimalSearchAndPhysicalVerification:
 
         for sol in solutions:
             assert sol.move_count == len(sol.moves)
-            c_test = c.copy()
-            if sol.inspection_rotation:
-                c_test.apply_moves(sol.inspection_rotation)
-            c_test.apply_moves(" ".join(sol.moves))
-            sym = get_symmetry(sol.orientation)
-            assert is_fb_solved_for_symmetry(c_test, sym, inspected=True)
+            assert_physically_solves_fb(c, sol)
 
     def test_candidate_expansion_to_l_plus_one(self):
         """When fewer than K optimal paths exist at depth L, search expands to L+1."""
@@ -249,20 +247,13 @@ class TestDatasetIntegrationAndPerformance:
         assert solutions[0].move_count <= 2
 
         # Verify physical solution for each candidate
-        from roux_engine.solver.symmetry import is_fb_solved_for_symmetry, get_symmetry
         c_base = CubeState().apply_moves(scramble)
         for sol in solutions:
-            c = c_base.copy()
-            if sol.inspection_rotation:
-                c.apply_moves(sol.inspection_rotation)
-            c.apply_moves(" ".join(sol.moves))
-            sym = get_symmetry(sol.orientation)
-            assert is_fb_solved_for_symmetry(c, sym, inspected=True)
+            assert_physically_solves_fb(c_base, sol)
 
     def test_batch_dataset_scrambles_all_physically_solve_in_under_10ms(self):
         """Verify across a batch of 20 authentic dataset scrambles that all candidates physically solve First Block in < 10ms each."""
         import time, json
-        from roux_engine.solver.symmetry import is_fb_solved_for_symmetry, get_symmetry
 
         with open("data/roux_solves.json", "r", encoding="utf-8") as f:
             solves = json.load(f)[:20]
@@ -289,14 +280,7 @@ class TestDatasetIntegrationAndPerformance:
                 # 2. Correct length
                 assert sol.move_count == len(sol.moves)
                 # 3. Physical First Block verification
-                c = c_base.copy()
-                if sol.inspection_rotation:
-                    c.apply_moves(sol.inspection_rotation)
-                c.apply_moves(" ".join(sol.moves))
-                sym = get_symmetry(sol.orientation)
-                assert is_fb_solved_for_symmetry(c, sym, inspected=True), (
-                    f"Candidate {sol} failed to physically solve FB on solve {i}"
-                )
+                assert_physically_solves_fb(c_base, sol)
 
         avg_ms = sum(durations) / len(durations)
         print(f"\nBatch 20 solves: avg={avg_ms:.2f}ms, max={max(durations):.2f}ms")

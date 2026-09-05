@@ -1,4 +1,4 @@
-"""Multi-path IDA* First Block (FB) solver and candidate engine.
+"""Top-K Candidate Search IDA* First Block (FB) solver and candidate engine.
 
 Uses the admissible 5.32M state First Block Pattern Database (PDB) with branch pruning
 (inverse moves, commutative ordering, redundant wide turns) to find top-K candidate
@@ -137,17 +137,17 @@ class _SearchConfig(NamedTuple):
 
 
 # -----------------------------------------------------------------------------
-# IDA* Search Engine
+# IDA* Top-K Candidate Search Engine
 # -----------------------------------------------------------------------------
 
 class FBSolver:
-    """High-performance multi-path IDA* First Block solver."""
+    """High-performance Top-K Candidate Search IDA* First Block solver."""
 
     _instance: Optional[FBSolver] = None
 
     def __init__(self, pdb: Optional[FBPDB] = None) -> None:
-        self.pdb = pdb if pdb is not None else FBPDB()
-        self.raw_pdb: np.ndarray = self.pdb._data
+        self.pdb: FBPDB = pdb if pdb is not None else FBPDB()
+        self._get_distance = self.pdb.get_distance_by_index
         c_arr, e_arr = build_transition_tables(FB_MOVESET)
         self.corner_trans: Tuple[Tuple[int, ...], ...] = tuple(tuple(int(x) for x in row) for row in c_arr)
         self.edge_trans: Tuple[Tuple[int, ...], ...] = tuple(tuple(int(x) for x in row) for row in e_arr)
@@ -177,13 +177,13 @@ class FBSolver:
             return
 
         state_idx = e_idx * 504 + c_idx
-        h = int((self.raw_pdb[state_idx >> 1] >> (4 * (state_idx & 1))) & 0x0F)
+        h = self._get_distance(state_idx)
 
         if g + h > max_depth:
             return
 
-        if g == max_depth:
-            if h == 0:
+        if h == 0:
+            if g == max_depth:
                 solutions.append(list(path))
             return
 
@@ -278,7 +278,7 @@ class FBSolver:
                 c_idx = FBIndexer.encode_corners(p_canon.dlf_slot, p_canon.dlf_co, p_canon.dbl_slot, p_canon.dbl_co)
                 e_idx = FBIndexer.encode_edges(p_canon.dl_slot, p_canon.dl_eo, p_canon.fl_slot, p_canon.fl_eo, p_canon.bl_slot, p_canon.bl_eo)
                 state_idx = e_idx * 504 + c_idx
-                h0 = int((self.raw_pdb[state_idx >> 1] >> (4 * (state_idx & 1))) & 0x0F)
+                h0 = self._get_distance(state_idx)
                 configs.append(_SearchConfig(h0=h0, sym=sym, orientation=ori_name, rotation=rot, c_idx=c_idx, e_idx=e_idx))
 
         configs.sort(key=lambda x: x.h0)
@@ -323,15 +323,15 @@ def solve_fb(
     scramble_or_cube: Union[str, CubeState],
     k: int = 5,
     orientation: Optional[Union[str, CanonicalSymmetry, Tuple[Color, Color]]] = None,
-    timeout_ms: Optional[float] = None,
+    timeout_ms: Optional[float] = 10.0,
 ) -> List[FBSolution]:
-    """Solves First Block using multi-path IDA* heuristic search.
+    """Solves First Block using Top-K Candidate Search IDA* heuristic search.
 
     Args:
         scramble_or_cube: Scramble move sequence string or CubeState.
         k: Maximum candidate solutions to return (default 5).
         orientation: Optional color scheme or symmetry identifier to restrict search.
-        timeout_ms: Optional search timeout in milliseconds.
+        timeout_ms: Optional search timeout in milliseconds (default 10ms).
 
     Returns:
         List of top-K FBSolution candidate move sequences.
@@ -349,5 +349,4 @@ __all__ = [
     "FBSolution",
     "FBSolver",
     "solve_fb",
-    "normalize_rotations",
 ]
