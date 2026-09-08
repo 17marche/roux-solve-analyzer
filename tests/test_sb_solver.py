@@ -438,5 +438,297 @@ class TestSBSolverPublicAPIAndCMLLPreview:
         assert callable(is_center_aligned_sb_solved)
 
 
+class TestSBSolverSquarePairPipeline:
+    """Slice 1: Square + Pair Search Pipeline (Back-first, Front-first, and Best)."""
+
+    def test_square_pair_back_first(self):
+        """Square + Pair with order='back_first' finds optimal back square then completes SB."""
+        from roux_engine.core.cube import CubeState
+        from roux_engine.segmenter.fb_detector import FBDetector
+        from roux_engine.solver.sb_solver import solve_sb, is_center_aligned_sb_solved
+
+        # Scramble SB pieces
+        c = CubeState().apply_moves("R U' R2 U r U' r' M2")
+        sols = solve_sb(c, k=3, style="square_pair", order="back_first")
+        assert len(sols) >= 1
+        for sol in sols:
+            assert sol.style == "square_pair"
+            assert sol.order == "back_first"
+            assert sol.square_move_idx is not None
+            assert sol.move_count > 0
+
+            # Physical execution verifies Center-Aligned SB and intact FB
+            final_cube = c.copy().apply_moves(" ".join(sol.moves))
+            assert FBDetector.is_canonical_fb_solved(final_cube)
+            assert is_center_aligned_sb_solved(final_cube)
+
+    def test_square_pair_front_first(self):
+        """Square + Pair with order='front_first' finds optimal front square then completes SB."""
+        from roux_engine.core.cube import CubeState
+        from roux_engine.segmenter.fb_detector import FBDetector
+        from roux_engine.solver.sb_solver import solve_sb, is_center_aligned_sb_solved
+
+        c = CubeState().apply_moves("r U r' U' R U2 R'")
+        sols = solve_sb(c, k=3, style="square_pair", order="front_first")
+        assert len(sols) >= 1
+        for sol in sols:
+            assert sol.style == "square_pair"
+            assert sol.order == "front_first"
+            assert sol.square_move_idx is not None
+            assert sol.move_count > 0
+
+            final_cube = c.copy().apply_moves(" ".join(sol.moves))
+            assert FBDetector.is_canonical_fb_solved(final_cube)
+            assert is_center_aligned_sb_solved(final_cube)
+
+    def test_square_pair_order_best(self):
+        """Square + Pair with order='best' aggregates both orders sorted by movecount."""
+        from roux_engine.core.cube import CubeState
+        from roux_engine.solver.sb_solver import solve_sb, is_center_aligned_sb_solved
+
+        c = CubeState().apply_moves("R U R' U2 r U' r' M2")
+        sols = solve_sb(c, k=5, style="square_pair", order="best")
+        assert len(sols) >= 1
+        assert len(sols) <= 5
+
+        # Check sorted order
+        for i in range(len(sols) - 1):
+            assert sols[i].move_count <= sols[i + 1].move_count
+
+        for sol in sols:
+            assert sol.style == "square_pair"
+            assert sol.order in ("back_first", "front_first")
+            final_cube = c.copy().apply_moves(" ".join(sol.moves))
+            assert is_center_aligned_sb_solved(final_cube)
+
+    def test_square_pair_presolved_square_skips_stage1(self):
+        """When back square is already solved, Stage 1 takes 0 moves and square_move_idx is 0."""
+        from roux_engine.core.cube import CubeState
+        from roux_engine.core.constants import Corner, Edge
+        from roux_engine.segmenter.sb_detector import SBDetector
+        from roux_engine.solver.sb_solver import solve_sb, is_center_aligned_sb_solved
+
+        c = CubeState()
+        # Displace only FR and DFR while leaving DR, BR, DBR solved
+        c.ep[Edge.FR], c.ep[Edge.UR] = c.ep[Edge.UR], c.ep[Edge.FR]
+        c.cp[Corner.DFR], c.cp[Corner.URF] = c.cp[Corner.URF], c.cp[Corner.DFR]
+
+        assert SBDetector.is_dr_solved(c)
+        assert SBDetector.is_back_pair_solved(c)
+        assert not SBDetector.is_front_pair_solved(c)
+
+        sols = solve_sb(c, k=1, style="square_pair", order="back_first")
+        assert len(sols) == 1
+        sol = sols[0]
+        assert sol.style == "square_pair"
+        assert sol.order == "back_first"
+        assert sol.square_move_idx == 0
+        final_cube = c.copy().apply_moves(" ".join(sol.moves))
+        assert is_center_aligned_sb_solved(final_cube)
+
+
+class TestSBSolverClassicalPipeline:
+    """Slice 2: Classical Standard Search Pipeline (DR -> Pair 1 -> Pair 2)."""
+
+    def test_classical_back_first(self):
+        """Classical search with order='back_first' places DR, solves back square, then completes SB."""
+        from roux_engine.core.cube import CubeState
+        from roux_engine.segmenter.fb_detector import FBDetector
+        from roux_engine.solver.sb_solver import solve_sb, is_center_aligned_sb_solved
+
+        c = CubeState().apply_moves("R U' R2 U r U' r' M2")
+        sols = solve_sb(c, k=3, style="classical", order="back_first")
+        assert len(sols) >= 1
+        for sol in sols:
+            assert sol.style == "classical"
+            assert sol.order == "back_first"
+            assert sol.dr_move_idx is not None
+            assert sol.pair1_move_idx is not None
+            assert sol.square_move_idx is not None
+            assert 0 <= sol.dr_move_idx <= sol.square_move_idx <= sol.move_count
+
+            final_cube = c.copy().apply_moves(" ".join(sol.moves))
+            assert FBDetector.is_canonical_fb_solved(final_cube)
+            assert is_center_aligned_sb_solved(final_cube)
+
+    def test_classical_front_first(self):
+        """Classical search with order='front_first' places DR, solves front square, then completes SB."""
+        from roux_engine.core.cube import CubeState
+        from roux_engine.segmenter.fb_detector import FBDetector
+        from roux_engine.solver.sb_solver import solve_sb, is_center_aligned_sb_solved
+
+        c = CubeState().apply_moves("r U r' U' R U2 R'")
+        sols = solve_sb(c, k=3, style="classical", order="front_first")
+        assert len(sols) >= 1
+        for sol in sols:
+            assert sol.style == "classical"
+            assert sol.order == "front_first"
+            assert sol.dr_move_idx is not None
+            assert sol.pair1_move_idx is not None
+            assert sol.square_move_idx is not None
+
+            final_cube = c.copy().apply_moves(" ".join(sol.moves))
+            assert FBDetector.is_canonical_fb_solved(final_cube)
+            assert is_center_aligned_sb_solved(final_cube)
+
+    def test_classical_order_best(self):
+        """Classical search with order='best' aggregates both orders sorted by movecount."""
+        from roux_engine.core.cube import CubeState
+        from roux_engine.solver.sb_solver import solve_sb, is_center_aligned_sb_solved
+
+        c = CubeState().apply_moves("R U R' U2 r U' r' M2")
+        sols = solve_sb(c, k=5, style="classical", order="best")
+        assert len(sols) >= 1
+        assert len(sols) <= 5
+
+        for i in range(len(sols) - 1):
+            assert sols[i].move_count <= sols[i + 1].move_count
+
+        for sol in sols:
+            assert sol.style == "classical"
+            assert sol.order in ("back_first", "front_first")
+            final_cube = c.copy().apply_moves(" ".join(sol.moves))
+            assert is_center_aligned_sb_solved(final_cube)
+
+    def test_classical_presolved_dr_skips_stage1(self):
+        """When DR is already solved, Stage 1 takes 0 moves and dr_move_idx is 0."""
+        from roux_engine.core.cube import CubeState
+        from roux_engine.segmenter.sb_detector import SBDetector
+        from roux_engine.solver.sb_solver import solve_sb, is_center_aligned_sb_solved
+
+        c = CubeState().apply_moves("R U R' U'")
+        assert SBDetector.is_dr_solved(c)
+
+        sols = solve_sb(c, k=1, style="classical", order="back_first")
+        assert len(sols) == 1
+        sol = sols[0]
+        assert sol.style == "classical"
+        assert sol.order == "back_first"
+        assert sol.dr_move_idx == 0
+        final_cube = c.copy().apply_moves(" ".join(sol.moves))
+        assert is_center_aligned_sb_solved(final_cube)
+
+    def test_classical_presolved_square_skips_stage1_and_stage2(self):
+        """When a full square is already solved, dr_move_idx and square_move_idx are 0."""
+        from roux_engine.core.cube import CubeState
+        from roux_engine.core.constants import Corner, Edge
+        from roux_engine.segmenter.sb_detector import SBDetector
+        from roux_engine.solver.sb_solver import solve_sb, is_center_aligned_sb_solved
+
+        c = CubeState()
+        c.ep[Edge.FR], c.ep[Edge.UR] = c.ep[Edge.UR], c.ep[Edge.FR]
+        c.cp[Corner.DFR], c.cp[Corner.URF] = c.cp[Corner.URF], c.cp[Corner.DFR]
+
+        assert SBDetector.is_dr_solved(c)
+        assert SBDetector.is_back_pair_solved(c)
+
+        sols = solve_sb(c, k=1, style="classical", order="back_first")
+        assert len(sols) == 1
+        sol = sols[0]
+        assert sol.style == "classical"
+        assert sol.order == "back_first"
+        assert sol.dr_move_idx == 0
+        assert sol.square_move_idx == 0
+        final_cube = c.copy().apply_moves(" ".join(sol.moves))
+        assert is_center_aligned_sb_solved(final_cube)
+
+
+class TestSBSolverMasterMultiStyleAggregation:
+    """Slice 3: Master Public API solve_sb with style='all', input ergonomics, and validation."""
+
+    def test_solve_sb_default_style_is_all_aggregating_candidates(self):
+        """Default solve_sb aggregates top candidates across styles, sorted by movecount."""
+        from roux_engine.core.cube import CubeState
+        from roux_engine.solver.sb_solver import solve_sb, is_center_aligned_sb_solved
+
+        c = CubeState().apply_moves("R U' R2 U r U' r' M2")
+        # Default style is "all"
+        sols = solve_sb(c, top_k=5)
+        assert len(sols) >= 1
+        assert len(sols) <= 5
+
+        # Check sorted order
+        for i in range(len(sols) - 1):
+            assert sols[i].move_count <= sols[i + 1].move_count
+
+        # Physical correctness
+        for sol in sols:
+            assert sol.style in ("free", "square_pair", "classical")
+            final_cube = c.copy().apply_moves(" ".join(sol.moves))
+            assert is_center_aligned_sb_solved(final_cube)
+
+    def test_solve_sb_all_with_explicit_order_constraints(self):
+        """When style='all' and order is specified, non-free solutions conform to requested order."""
+        from roux_engine.core.cube import CubeState
+        from roux_engine.solver.sb_solver import solve_sb
+
+        c = CubeState().apply_moves("R U' R2 U r U' r' M2")
+
+        # 1. Targeted back_first
+        sols_back = solve_sb(c, top_k=5, style="all", order="back_first")
+        for s in sols_back:
+            if s.style in ("square_pair", "classical"):
+                assert s.order == "back_first"
+
+        # 2. Targeted front_first
+        sols_front = solve_sb(c, top_k=5, style="all", order="front_first")
+        for s in sols_front:
+            if s.style in ("square_pair", "classical"):
+                assert s.order == "front_first"
+
+    def test_solve_sb_all_candidate_attributes_complete(self):
+        """Every candidate solution exposes complete metadata and preview of CMLL case."""
+        from roux_engine.core.cube import CubeState
+        from roux_engine.solver.sb_solver import solve_sb
+
+        c = CubeState().apply_moves("R U R' U2 r U' r' M2")
+        sols = solve_sb(c, top_k=5, style="all")
+        assert len(sols) >= 1
+
+        for s in sols:
+            assert isinstance(s.moves, tuple)
+            assert s.move_count == len(s.moves)
+            assert s.style in ("free", "square_pair", "classical")
+            assert s.order in ("direct", "back_first", "front_first")
+            assert isinstance(s.resulting_cmll_case, str)
+            assert s.dr_move_idx is not None
+            assert s.pair1_move_idx is not None
+            assert s.square_move_idx is not None
+            assert 0 <= s.dr_move_idx <= s.move_count
+            assert 0 <= s.pair1_move_idx <= s.move_count
+            assert 0 <= s.square_move_idx <= s.move_count
+
+    def test_solve_sb_invalid_style_or_order_raises_value_error(self):
+        """Invalid style or order string raises ValueError."""
+        import pytest
+        from roux_engine.core.cube import CubeState
+        from roux_engine.solver.sb_solver import solve_sb
+
+        c = CubeState().apply_moves("R U R'")
+        with pytest.raises(ValueError, match="style"):
+            solve_sb(c, style="invalid_style")
+
+        with pytest.raises(ValueError, match="order"):
+            solve_sb(c, order="invalid_order")
+
+    def test_solve_sb_scramble_and_cubestate_equivalence(self):
+        """Solving via raw scramble string and pre-simulated CubeState produces identical results."""
+        from roux_engine.core.cube import CubeState
+        from roux_engine.core.parser import MoveParser
+        from roux_engine.solver.sb_solver import solve_sb
+
+        full_solve = "D' F' L2 D B r U R' U' R U2 R' U R U' R'"
+        scramble = " ".join(MoveParser.invert_moves(full_solve))
+        full_moves = f"{scramble} D' F' L2 D B"
+
+        c = CubeState().apply_moves(full_moves)
+
+        sols_str = solve_sb(full_moves, top_k=3, style="all")
+        sols_cube = solve_sb(c, top_k=3, style="all")
+
+        assert len(sols_str) == len(sols_cube)
+        assert [s.moves for s in sols_str] == [s.moves for s in sols_cube]
+
+
 
 
