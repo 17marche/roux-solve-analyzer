@@ -136,7 +136,7 @@ def is_center_aligned_sb_solved(
     block: BlockDefinition = ALL_BLOCK_DEFINITIONS[""]
 ) -> bool:
     """Checks if Center-Aligned Second Block is strictly solved:
-    1. All 5 Right-block pieces (DR, FR, BR, DFR, DRB) are solved.
+    1. All 5 Second Block pieces (DR, FR, BR, DFR, DRB) are solved.
     2. M-slice centers (U, D, F, B) match their solved colors (offset 0).
     """
     if not SBDetector.is_right_1x2x3_block_solved(cube, block):
@@ -214,6 +214,13 @@ class SBSolver:
             cls._instance = cls()
         return cls._instance
 
+    def _heuristic(self, state_idx: int, center_off: int) -> int:
+        """Returns exact PDB heuristic distance with Center-Aligned SB penalty."""
+        h = self._get_distance(state_idx)
+        if center_off != 0 and h == 0:
+            return 1
+        return h
+
     def _ida_search(
         self,
         c_idx: int,
@@ -232,14 +239,12 @@ class SBSolver:
             return
 
         state_idx = e_idx * NUM_SB_CORNER_CONFIGS + c_idx
-        h = self._get_distance(state_idx)
-        if center_off != 0 and h == 0:
-            h = 1
+        h = self._heuristic(state_idx, center_off)
 
         if g + h > max_depth:
             return
 
-        if h == 0 and center_off == 0:
+        if h == 0:
             if g == max_depth:
                 solutions.append(tuple(path))
             return
@@ -284,23 +289,30 @@ class SBSolver:
         pair1_move_idx: Optional[int] = None
         square_move_idx: Optional[int] = None
 
-        if len(moves) == 0:
+        sim = base_cube.copy()
+        if SBDetector.is_dr_solved(sim, block):
             dr_move_idx = 0
+        back_init = SBDetector.is_back_pair_solved(sim, block)
+        front_init = SBDetector.is_front_pair_solved(sim, block)
+        if back_init or front_init:
             pair1_move_idx = 0
+        if dr_move_idx == 0 and pair1_move_idx == 0:
             square_move_idx = 0
-        else:
-            sim = base_cube.copy()
-            for idx, m_token in enumerate(moves):
-                sim.apply_move(m_token)
-                dr_ok = SBDetector.is_dr_solved(sim, block)
-                back_ok = SBDetector.is_back_pair_solved(sim, block)
-                front_ok = SBDetector.is_front_pair_solved(sim, block)
 
-                if dr_move_idx is None and dr_ok:
-                    dr_move_idx = idx
-                if pair1_move_idx is None and dr_ok and (back_ok or front_ok):
-                    pair1_move_idx = idx
-                    square_move_idx = idx
+        for idx, m_token in enumerate(moves):
+            sim.apply_move(m_token)
+            dr_ok = SBDetector.is_dr_solved(sim, block)
+            back_ok = SBDetector.is_back_pair_solved(sim, block)
+            front_ok = SBDetector.is_front_pair_solved(sim, block)
+            pair1_ok = back_ok or front_ok
+            square_ok = dr_ok and pair1_ok
+
+            if dr_move_idx is None and dr_ok:
+                dr_move_idx = idx
+            if pair1_move_idx is None and pair1_ok:
+                pair1_move_idx = idx
+            if square_move_idx is None and square_ok:
+                square_move_idx = idx
 
         return SBSolution(
             moves=final_moves,
@@ -409,12 +421,10 @@ class SBSolver:
         center_off = get_m_slice_center_offset(cube, block)
 
         state_idx = e_idx * NUM_SB_CORNER_CONFIGS + c_idx
-        h0 = self._get_distance(state_idx)
-        if center_off != 0 and h0 == 0:
-            h0 = 1
+        h0 = self._heuristic(state_idx, center_off)
 
         # Handle already solved state (0 moves)
-        if h0 == 0 and center_off == 0:
+        if h0 == 0:
             sol = self._build_solution(
                 base_cube=cube,
                 moves=(),
@@ -425,7 +435,7 @@ class SBSolver:
             )
             return [sol]
 
-        # Multi-path IDA* search
+        # Top-K Candidate Search
         depth = h0
         sols: List[Tuple[str, ...]] = []
         seen_paths: Set[Tuple[str, ...]] = set()

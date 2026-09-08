@@ -105,7 +105,7 @@ class TestSBCenterAlignmentAndSolutionModel:
         block = ALL_BLOCK_DEFINITIONS[""]
         for m_move in ("M", "M2", "M'"):
             c = CubeState().apply_move(m_move)
-            # Right block 5 pieces are physically untouched by M
+            # Second Block 5 pieces are physically untouched by M
             assert SBDetector.is_canonical_sb_solved(c)
             # Center offset must be non-zero
             assert get_m_slice_center_offset(c, block) != 0
@@ -140,7 +140,7 @@ class TestSBCenterAlignmentAndSolutionModel:
 
 
 class TestSBSolverCanonicalSearch:
-    """Slice 3: Multi-Path IDA* Search Engine in Canonical Frame."""
+    """Slice 3: Top-K Candidate Search Engine in Canonical Frame."""
 
     def test_already_solved_canonical_state(self):
         """Clean CubeState with already solved SB returns 0-move candidate."""
@@ -401,6 +401,22 @@ class TestSBSolverPublicAPIAndCMLLPreview:
         assert sol.square_move_idx is not None
         assert 0 <= sol.dr_move_idx <= sol.move_count
         assert 0 <= sol.pair1_move_idx <= sol.move_count
+
+    def test_solve_sb_presolved_dr_milestone(self):
+        """Pre-solved DR edge before SB execution records dr_move_idx = 0."""
+        from roux_engine.solver.sb_solver import solve_sb
+        from roux_engine.core.cube import CubeState
+        from roux_engine.segmenter.sb_detector import SBDetector
+
+        # Scramble where DR is untouched/solved, only U/R moves scramble the pairs:
+        # e.g., R U R' U' R U R' disrupts pairs but keeps DR solved at start?
+        # Wait, R moves move DR. To keep DR solved, pairs can be scrambled with U and R U R' U' R U R' (moves that preserve DR).
+        # Actually: Sexy move R U R' U' leaves DR untouched!
+        c = CubeState().apply_moves("R U R' U'")
+        assert SBDetector.is_dr_solved(c)
+        sols = solve_sb(c, k=1)
+        assert len(sols) == 1
+        assert sols[0].dr_move_idx == 0
 
     def test_package_exports(self):
         """roux_engine.solver must export SBSolution, SBSolver, solve_sb, is_center_aligned_sb_solved."""
