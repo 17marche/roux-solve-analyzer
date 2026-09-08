@@ -43,6 +43,7 @@ from .symmetry import (
 
 from .lse_solver import LSEGraph, LSESolution, LSEPath, solve_lse, solve_lse_paths
 from .fb_solver import FBSolution, FBSolver, solve_fb
+from .sb_solver import SBSolution, SBSolver, solve_sb, is_center_aligned_sb_solved
 from . import ida_star
 
 __all__ = [
@@ -89,6 +90,10 @@ __all__ = [
     "FBSolution",
     "FBSolver",
     "solve_fb",
+    "SBSolution",
+    "SBSolver",
+    "solve_sb",
+    "is_center_aligned_sb_solved",
     "ida_star",
 ]
 
