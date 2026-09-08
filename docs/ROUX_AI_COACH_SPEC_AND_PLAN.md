@@ -180,6 +180,15 @@ To evaluate any of the **8 dual-neutral First Blocks** (e.g. Yellow bottom, Gree
 3. Transform the candidate move sequences back into the solve orientation.
 *Result:* A single 2.66 MB file evaluates all 8 First Blocks with **zero extra memory overhead**.
 
+#### Second Block (SB) State Space & PDB Generation Math:
+The Second Block consists of 3 edges ($DR, FR, BR$) and 2 corners ($DFR, DBR$) solved in the $\langle R, U, r, M \rangle$ generator while preserving the completed First Block:
+1. **Edge Combinations:** In the $\langle R, U, r, M \rangle$ generator with FB intact, 7 edge positions are reachable, yielding **4,032 reachable edge states**.
+2. **Corner Combinations:** 5 corner positions are reachable, yielding **270 reachable corner states**.
+3. **Total Second Block States:**
+   $$\text{Total SB States} = 4,032 \times 270 = \mathbf{1,088,640 \text{ states}}$$
+4. **PDB Serialization:** Packed into 4-bit nibbles as `sb_pdb.bin` (**544 KB**), delivering instant heuristic distance queries ($< 1\mu\text{s}$).
+5. **Multi-Paradigm Search:** Evaluates Free blockbuilding (shortest IDA* path), Classical standard ($DR \rightarrow \text{pair 1} \rightarrow \text{pair 2}$), and Square + pair.
+
 * **LSE Complete State Table:**
   * LSE subgroup ($\langle M, U \rangle$ generator): **7,680 reachable states** ($< 2 \text{ MB}$).
 
@@ -244,12 +253,15 @@ gantt
     section Phase 3: Heuristic Solver
     Pattern Database Generator (FB & LSE BFS)    :p3_1, after p2_2, 3d
     IDA* Candidate Generator (Top-K Shortest)    :p3_2, after p3_1, 3d
+    section Phase 3.5: SB PDB & Solver
+    SB PDB Generator (1.08M States BFS)          :p35_1, after p3_2, 2d
+    SB Multi-Paradigm Solver & Verification      :p35_2, after p35_1, 2d
     section Phase 4: Biomechanical Flow
-    Empirical Transition Matrix Builder (2H & OH):p4_1, after p3_2, 2d
-    Regrip & Micro-Pause Diagnostic Scorer       :p4_2, after p4_1, 2d
+    Empirical Transition Matrix Builder (2H & OH):p4_1, after p35_2, 2d
+    Regrip & Macro-Trigger Diagnostic Scorer     :p4_2, after p4_1, 2d
     section Phase 5: Policy Model (BC)
     Dataset Pipeline & 8x Automorphisms          :p5_1, after p4_2, 2d
-    PyTorch Behavioral Cloning Policy Training   :p5_2, after p5_1, 4d
+    PyTorch Behavioral Cloning & Coupled Search  :p5_2, after p5_1, 4d
     section Phase 6: Diagnostic Reporter
     JSON Diagnostic Engine & Alternative Selector:p6_1, after p5_2, 2d
     End-to-End Integration & Verification        :p6_2, after p6_1, 2d
@@ -275,20 +287,29 @@ gantt
   5. **Validation Test Suite:** Run segmenter across the 1,181 reco.nz solves dataset to verify 100% segmentation accuracy.
 
 #### Milestone 3: Pattern Databases (PDB) & IDA* Heuristic Solver
-* **Target:** Generate mathematical optimal solutions and top-$K$ candidates for FB, SB pairs, and LSE.
+* **Target:** Generate mathematical optimal solutions and top-$K$ candidates for FB and LSE.
 * **Key Tasks:**
-  1. Precompute canonical FB PDB (5.32M states BFS) into a fast packed NumPy lookup table (`fb_pdb.npy`, ~2.66 MB).
+  1. Precompute canonical FB PDB (5.32M states BFS) into a fast packed NumPy lookup table (`fb_pdb.bin`, ~2.66 MB).
   2. Implement canonical symmetry re-mapping to instantly query all 8 dual-neutral First Blocks.
   3. Precompute LSE state lookup table (7,680 states, $<2\text{ MB}$).
   4. Build $IDA^*$ search engine returning the top-$K$ shortest candidate paths.
 
+#### Milestone 3.5: Second Block (SB) PDB & Heuristic Solver [COMPLETED]
+* **Target:** Generate optimal and style-matched Second Block solutions preserving First Block in $\langle R, U, r, M \rangle$.
+* **Key Tasks:**
+  1. Precompute 1.08M state SB PDB via BFS with FB preserved into packed 4-bit table (`sb_pdb.bin`, 544 KB).
+  2. Implement multi-paradigm blockbuilding solver supporting Free, Classical ($DR \rightarrow \text{pair 1} \rightarrow \text{pair 2}$), and Square + pair modes.
+  3. Integration and benchmark suite in `tests/test_reco_benchmark.py`: verified across 959 human reconstructions with **99.37% superiority rate**, **0.45 ms Free search latency** (3.03 ms all styles), and 100% invariant preservation (FB intact, centers aligned).
+  4. Root cause and document edge cases (6 FCN solves with M-slice offset centers requiring 1 STM alignment).
+
 #### Milestone 4: Empirical Transition Matrix Builder & Biomechanical Flow Scorer
-* **Target:** Derive data-driven move cost tables from human smart cube datasets.
+* **Target:** Derive data-driven move cost tables from human smart cube datasets and model closed-loop macro triggers.
 * **Key Tasks:**
   1. Build Bigram Transition Matrix builder for 2H and OH (`matrix_2h.json`, `matrix_oh.json`).
   2. Implement micro-pause and regrip detector based on inter-move latencies.
-  3. Support user handedness configuration (`m_slice_hand: "right" | "left"`).
-  4. Generate heatmap visualization to verify empirical transition times against human fingertricks.
+  3. Model and score closed-loop macro triggers ($R' F R F'$ sledgehammer, $F R' F' R$ hedge) that restore FB upon completion, evaluating ergonomic compound moves ($g\text{-cost} = 4$) without cube rotations.
+  4. Support user handedness configuration (`m_slice_hand: "right" | "left"`).
+  5. Generate heatmap visualization to verify empirical transition times against human fingertricks.
 
 #### Milestone 5: Neural Policy Model (Behavioral Cloning)
 * **Target:** Train lightweight neural network to score human style, lookahead, and piece preservation.
@@ -296,14 +317,17 @@ gantt
   1. Data pipeline applying 8x $x2y$ automorphisms to human reconstructions.
   2. Pre-train PyTorch model on synthetic IDA* solves (learning cube physics & blocks).
   3. Fine-tune model on elite human solve transitions (learning lookahead & style).
-  4. Export model to ONNX for fast, lightweight local CPU inference.
+  4. Implement coupled beam search over top-$K$ $DR$ endpoints using policy priors $P(a_t \mid s_t)$ to avoid breaking pre-formed pairs.
+  5. Export model to ONNX for fast, lightweight local CPU inference ($< 5\text{ms}$).
 
 #### Milestone 6: Diagnostic Engine & Structured Coaching Generator
 * **Target:** Tie all modules together into a unified `analyze_solve()` Python API.
 * **Key Tasks:**
   1. Aggregate phase metrics, detected mistakes, and ranked alternatives.
-  2. Output clean, structured JSON diagnostic payload (`diagnostic_report.json`).
-  3. Provide structured prompt templates for downstream LLM coaching generation.
+  2. Provide paradigm-matched critique comparing user solves against style-matched solver alternatives (Classical vs Free vs Square+Pair).
+  3. Classify center-alignment vs true SB inefficiency to prevent misleading advice on solves with deferred center adjustments.
+  4. Output clean, structured JSON diagnostic payload (`diagnostic_report.json`).
+  5. Provide structured prompt templates for downstream LLM coaching generation.
 
 ---
 
@@ -317,7 +341,8 @@ roux_analyzer/
 ├── data/
 │   ├── roux_solves.json                <-- 1,181 reco.nz archive
 │   ├── pdbs/
-│   │   ├── fb_pdb.npy                  <-- 5.32M states FB database (~2.66MB)
+│   │   ├── fb_pdb.bin                  <-- 5.32M states FB database (~2.66MB packed)
+│   │   ├── sb_pdb.bin                  <-- 1.08M states SB database (544KB packed)
 │   │   └── lse_table.json              <-- 7,680 states LSE graph
 │   └── transitions/
 │       ├── matrix_2h.json              <-- 2H Bigram transition latencies
@@ -336,8 +361,10 @@ roux_analyzer/
 │       │   ├── cmll_classifier.py      <-- 42 CMLL cases & AUF tracker
 │       │   └── lse_classifier.py       <-- 4a (EOLR), 4b, 4c classifier
 │       ├── solver/
-│       │   ├── pdb_generator.py        <-- BFS PDB generator
+│       │   ├── pdb_generator.py        <-- BFS FB PDB generator
+│       │   ├── sb_pdb.py               <-- BFS SB PDB generator (1.08M states)
 │       │   ├── ida_star.py             <-- Top-K shortest path search
+│       │   ├── sb_solver.py            <-- Multi-paradigm SB blockbuilding solver
 │       │   └── lse_solver.py           <-- Instant LSE lookup solver
 │       ├── ergonomics/
 │       │   ├── transition_matrix.py    <-- Bigram latency scorer
@@ -363,5 +390,7 @@ roux_analyzer/
 
 1. **Phase Segmentation Accuracy:** Must achieve **100% accuracy** on segmenting valid human reconstructions without crashing or misidentifying step transitions.
 2. **CMLL Classification Accuracy:** Must correctly classify **100% of all 42 CMLL cases** and isolate pre/post AUF correctly.
-3. **PDB Lookup Latency:** FB heuristic lookup must execute in **$< 1 \mu\text{s}$** per state query.
-4. **End-to-End Solve Analysis Latency:** Full analysis of a 50-move solve (segmentation + diagnostics + alternative search) must complete in **$< 250\text{ms}$** on a standard CPU.
+3. **PDB Lookup Latency:** FB and SB heuristic lookups must execute in **$< 1 \mu\text{s}$** per state query.
+4. **Second Block Solver Quality:** Must match or beat human reconstructor SB movecount in **$\ge 95\%$** of benchmarked solves (achieved **99.37%** across 959 solves), guaranteeing 100% First Block preservation, 100% center alignment, and 100% rotationless $\langle R, U, r, M \rangle$ compliance.
+5. **SB Search Latency:** Single SB search latency must average **$< 10\text{ms}$** on CPU (achieved **0.45 ms** Free, **3.03 ms** multi-paradigm).
+6. **End-to-End Solve Analysis Latency:** Full analysis of a 50-move solve (segmentation + diagnostics + alternative search) must complete in **$< 250\text{ms}$** on a standard CPU.

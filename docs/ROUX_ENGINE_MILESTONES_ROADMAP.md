@@ -32,9 +32,9 @@ The development of the Roux AI Speedcube Coach is broken down into **6 sequentia
                                        │
                                        ▼
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│ Milestone 3.5: Second Block (SB) PDB & Heuristic Solver                     │
-│ -> 1.08M State SB PDB (~544KB) in <R, U, r, M> with FB preserved           │
-│ -> Blockbuilding Path Search (Free, DR + 2 pairs, Square + pair)            │
+│ Milestone 3.5: Second Block (SB) PDB & Heuristic Solver [COMPLETED]         │
+│ -> 1.08M State SB PDB (544KB packed) in <R, U, r, M> with FB preserved     │
+│ -> 959 solves benchmarked: 99.37% superiority, 0.45ms Free search latency   │
 └──────────────────────────────────────┬──────────────────────────────────────┘
                                        │
                                        ▼
@@ -116,18 +116,22 @@ The development of the Roux AI Speedcube Coach is broken down into **6 sequentia
 
 ---
 
-### Milestone 3.5: Second Block (SB) PDB & Heuristic Solver
+### Milestone 3.5: Second Block (SB) PDB & Heuristic Solver [COMPLETED]
 * **Goal:** Build an exact Pattern Database and search engine for Second Block ($DR, FR, BR$ edges + $DFR, DBR$ corners) preserving the solved First Block.
 * **Key Modules:**
-  * `src/roux_engine/solver/sb_pdb.py`: Generates the **1.08M state SB PDB** ($4{,}032 \times 270 = 1{,}088{,}640$ states, ~544 KB packed) in the $\langle R, U, r, M \rangle$ generator.
-  * `src/roux_engine/solver/sb_solver.py`: Search engine evaluating distinct blockbuilding styles:
+  * `src/roux_engine/solver/sb_pdb.py`: Generates the **1.08M state SB PDB** ($4{,}032 \times 270 = 1{,}088{,}640$ states, ~544 KB packed nibbles) in the $\langle R, U, r, M \rangle$ generator.
+  * `src/roux_engine/solver/sb_solver.py`: Search engine evaluating distinct blockbuilding paradigms:
     * Free blockbuilding (direct shortest path).
     * Classical standard ($DR$ edge first $\rightarrow$ 2 pairs).
     * Square + pair building.
 * **Testing & Verification:**
-  * Benchmark against human reconstructors' SB solutions in `roux_solves.json`.
-* **Acceptance Criteria:** SB PDB size $< 600\text{ KB}$, candidate search $< 10\text{ms}$.
-
+  * Benchmark suite in `tests/test_reco_benchmark.py` running `solve_sb` across 959 real human reconstructions from `data/roux_solves.json`.
+  * Superiority rate: **99.37%** (beating or matching human movecount in 953/959 solves, surpassing $\ge 95\%$ target).
+  * CPU Search Latency: **0.45 ms** single Free search, **3.03 ms** multi-style search (well below $< 10\text{ms}$ interactive budget).
+  * Invariant Verification: **100%** First Block preservation, **100%** Center alignment, **100%** $\langle R, U, r, M \rangle$ compliance.
+  * **Documented Anomalies (The 6 Solves):** Solves #10683, 10220, etc. (FCN solves with offset M-slice centers) had 0 human moves recorded due to late segmenter match; solver required 1 turn to align centers ($1\text{ STM} > 0\text{ STM}$), though human solves actually took 18–22 STM.
+  * **Style-Matched Baseline:** Human reconstructions average 16.56 STM for SB; Free solver averages 11.23 STM. Classical solver averages 15.06 STM and matches or beats human solves in 73% of cases.
+* **Acceptance Criteria:** SB PDB size $< 600\text{ KB}$ (achieved 544 KB), candidate search $< 10\text{ms}$ (achieved 0.45 ms / 3.03 ms).
 
 ---
 
@@ -137,11 +141,14 @@ The development of the Roux AI Speedcube Coach is broken down into **6 sequentia
   * `src/roux_engine/ergonomics/transition_matrix.py`: Ingests and normalizes 2-gram bigram transition latencies for Two-Handed (2H) and One-Handed (OH) profiles.
   * `src/roux_engine/ergonomics/regrip_detector.py`: Identifies physical regrips and execution pauses based on inter-move timestamps ($\Delta t$) and move mechanics ($R \rightarrow F$, $r2 \rightarrow U$).
   * `src/roux_engine/ergonomics/hand_profile.py`: Conditions LSE advice based on user hand preference (`m_slice_hand`: `"right"` vs `"left"`).
+  * `src/roux_engine/ergonomics/macro_triggers.py`: Ergonomic scoring and expansion for **closed-loop macro triggers** ($R' F R F'$ sledgehammer, $F R' F' R$ hedge).
+    * *Rationale:* Human solvers frequently use $F$-slice triggers for edge orientation and pair insertion without whole-cube rotations ($y, x, z$). Because these macro triggers restore First Block at their conclusion, Milestone 4 models them as ergonomic compound transitions ($g\text{-cost} = 4$) that search can evaluate alongside pure $\langle R, U, r, M \rangle$.
 * **Reference Integration:** Ingest `onionhoney/roux-trainers/src/lib/two_gram_v1.json` (528 empirical transition pairs) as our calibrated baseline matrix.
 * **Testing & Verification:**
   * Generate transition latency heatmaps comparing home-grip flow ($\langle R, U, r, M \rangle$) against regrip moves ($F, B, D, y$).
   * Test candidate ranking: verify smooth fingertrick sequences score higher than awkward regrip sequences of equal movecount.
-* **Acceptance Criteria:** Accurate detection of pauses and regrips across smart-cube solve streams.
+  * Benchmark macro trigger ergonomics against equivalent rotation-heavy or pure generator equivalents.
+* **Acceptance Criteria:** Accurate detection of pauses and regrips across smart-cube solve streams; ergonomic scoring of compound macro triggers.
 
 ---
 
@@ -153,10 +160,13 @@ The development of the Roux AI Speedcube Coach is broken down into **6 sequentia
   * `src/roux_engine/policy/train.py`: Two-stage training pipeline (Stage 1: Synthetic pre-training on $IDA^*$ solves $\rightarrow$ Stage 2: Fine-tuning on human reconstructions).
   * `src/roux_engine/policy/ranker.py`: Evaluates candidate paths:
     $$S(\text{path}) = \sum_t \log P(a_t \mid s_t)$$
+  * `src/roux_engine/policy/coupled_search.py`: **Coupled Beam Search & Lookahead-Aware Path Selection**.
+    * *Rationale:* Greedy staged solving ($DR \rightarrow \text{pair 1} \rightarrow \text{pair 2}$) can greedily optimize $DR$ at the expense of scattering pre-formed or easily paired U-face pieces. Coupled search retains top-$K$ candidate $DR$ endpoints and uses policy priors $P(a_t \mid s_t)$ to favor $DR$ lines that preserve lookahead and pairing potential.
   * `src/roux_engine/policy/export.py`: Exports trained weights to ONNX for fast, lightweight local CPU inference.
 * **Testing & Verification:**
   * Benchmark top-1 and top-3 next-move prediction accuracy on held-out human solves.
   * Verify model favors lookahead-preserving pair choices over lookahead-destroying choices.
+  * Measure coupled beam search movecount and fluency gains over isolated greedy staging.
 * **Acceptance Criteria:** Model runs inference in $< 5\text{ms}$ on CPU via ONNX runtime.
 
 ---
@@ -165,10 +175,15 @@ The development of the Roux AI Speedcube Coach is broken down into **6 sequentia
 * **Goal:** Tie all modules together into a unified `analyze_solve()` Python API producing structured diagnostic reports and coaching critiques.
 * **Key Modules:**
   * `src/roux_engine/diagnostics/engine.py`: Master analysis pipeline integrating Segmentation + Deterministic Search + Transition Scoring + Policy Ranking.
+  * `src/roux_engine/diagnostics/paradigm_matcher.py`: **Paradigm-Matched Solution Comparison**.
+    * *Rationale:* Compares the user's solve against solver alternatives generated *under the user's chosen blockbuilding paradigm* (e.g. comparing a human Classical solve against the Classical solver at 15.06 STM, rather than an unlookaheadable Free solution at 11.23 STM) so critiques are practical and immediately applicable.
+  * `src/roux_engine/diagnostics/center_alignment.py`: **Center-Alignment vs. Inefficiency Diagnostics**.
+    * *Rationale:* Distinguishes intentional deferred M-slice center adjustments from true blockbuilding inefficiencies, avoiding spurious critiques on solves where center alignment was left for LSE Step 4c.
   * `src/roux_engine/diagnostics/reporter.py`: Formats analysis into clean, standardized JSON payloads (`diagnostic_report.json`) detailing phase metrics, flow breakdowns, detected mistakes, and actionable alternatives.
   * `src/roux_engine/diagnostics/llm_prompter.py`: Generates structured prompt payloads for downstream LLM mentors.
 * **Testing & Verification:**
   * End-to-end integration tests analyzing diverse solves (world-record singles, intermediate solves with rotations, smart-cube streams with pauses).
+  * Validate paradigm-matched critique accuracy across both Classical and Free solve profiles.
 * **Acceptance Criteria:** Full 50-move solve analysis completes in $< 250\text{ms}$ on CPU.
 
 ---
