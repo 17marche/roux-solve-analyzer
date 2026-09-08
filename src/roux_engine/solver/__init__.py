@@ -1,6 +1,16 @@
 """Solver and Pattern Database (PDB) modules for Roux method."""
 
 from .fb_indexer import FBIndexer, FBPlacement
+from .sb_indexer import (
+    SBIndexer,
+    SBPlacement,
+    RightBackSquareIndexer,
+    RightBackSquarePlacement,
+    RightFrontSquareIndexer,
+    RightFrontSquarePlacement,
+    SBBackSquareIndexer,
+    SBFrontSquareIndexer,
+)
 from .pdb_generator import FB_MOVESET, generate_fb_pdb, get_default_pdb_path
 from .fb_pdb import FBPDB
 from .symmetry import (
@@ -22,6 +32,14 @@ from . import ida_star
 __all__ = [
     "FBIndexer",
     "FBPlacement",
+    "SBIndexer",
+    "SBPlacement",
+    "RightBackSquareIndexer",
+    "RightBackSquarePlacement",
+    "RightFrontSquareIndexer",
+    "RightFrontSquarePlacement",
+    "SBBackSquareIndexer",
+    "SBFrontSquareIndexer",
     "FBPDB",
     "FB_MOVESET",
     "generate_fb_pdb",
