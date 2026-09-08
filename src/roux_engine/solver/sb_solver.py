@@ -6,6 +6,7 @@ Enforces Center-Aligned SB goal condition and dual-neutral symmetry re-mapping.
 """
 
 from __future__ import annotations
+from collections import deque
 from dataclasses import dataclass
 from typing import List, Tuple, Sequence, Optional
 
@@ -401,6 +402,7 @@ class SBSolver:
         c_idx: int,
         e_idx: int,
         k: int = 3,
+        prev_m: int = -1,
         deadline: Optional[float] = None,
     ) -> List[Tuple[str, ...]]:
         """Searches for shortest path(s) to solved 1x2x2 square (back or front) using Square PDB."""
@@ -423,7 +425,7 @@ class SBSolver:
         sols: List[Tuple[str, ...]] = []
         depth = h0
 
-        def _dfs(c: int, e: int, g: int, max_d: int, prev_m: int, path: List[str]) -> None:
+        def _dfs(c: int, e: int, g: int, max_d: int, pm: int, path: List[str]) -> None:
             if deadline is not None and time.perf_counter() > deadline:
                 return
             h = pdb_get(e * num_c + c)
@@ -433,7 +435,7 @@ class SBSolver:
                 if g == max_d:
                     sols.append(tuple(path))
                 return
-            next_moves = range(len(SB_MOVESET)) if prev_m == -1 else self.allowed_moves[prev_m]
+            next_moves = range(len(SB_MOVESET)) if pm == -1 else self.allowed_moves[pm]
             for m in next_moves:
                 nc = c_trans[c][m]
                 ne = e_trans[e][m]
@@ -446,7 +448,7 @@ class SBSolver:
         while len(sols) < k and depth <= 12:
             if deadline is not None and time.perf_counter() > deadline:
                 break
-            _dfs(c_idx, e_idx, 0, depth, -1, [])
+            _dfs(c_idx, e_idx, 0, depth, prev_m, [])
             depth += 1
 
         return sols[:k]
@@ -592,7 +594,6 @@ class SBSolver:
         if start_state == 14:
             return [()]
 
-        from collections import deque
         queue = deque([(start_state, -1, ())])
         sols: List[Tuple[str, ...]] = []
         found_depth: Optional[int] = None
@@ -615,7 +616,7 @@ class SBSolver:
                     if len(sols) >= k:
                         return sols
                 else:
-                    if found_depth is None and len(npath) < 4:
+                    if found_depth is None and len(npath) < 6:
                         queue.append((nst, m, npath))
 
         return sols if sols else [()]
@@ -647,19 +648,20 @@ class SBSolver:
             if deadline is not None and time.perf_counter() > deadline:
                 break
             c1, e1, cent1 = self._advance_sb_state(c_idx, e_idx, center_off, p1)
+            p1_prev_m = _SB_MOVE_INDEX[p1[-1]] if p1 else -1
 
             if order == "back_first":
                 dfr, dfr_co, dbr, dbr_co = SBIndexer.decode_corners(c1)
                 dr, dr_eo, fr, fr_eo, br, br_eo = SBIndexer.decode_edges(e1)
                 sq_c = RightBackSquareIndexer.encode_corner(dbr, dbr_co)
                 sq_e = RightBackSquareIndexer.encode_edges(dr, dr_eo, br, br_eo)
-                sq_paths = self._search_square("back", sq_c, sq_e, k=min(k, 3), deadline=deadline)
+                sq_paths = self._search_square("back", sq_c, sq_e, k=min(k, 3), prev_m=p1_prev_m, deadline=deadline)
             else:
                 dfr, dfr_co, dbr, dbr_co = SBIndexer.decode_corners(c1)
                 dr, dr_eo, fr, fr_eo, br, br_eo = SBIndexer.decode_edges(e1)
                 sq_c = RightFrontSquareIndexer.encode_corner(dfr, dfr_co)
                 sq_e = RightFrontSquareIndexer.encode_edges(dr, dr_eo, fr, fr_eo)
-                sq_paths = self._search_square("front", sq_c, sq_e, k=min(k, 3), deadline=deadline)
+                sq_paths = self._search_square("front", sq_c, sq_e, k=min(k, 3), prev_m=p1_prev_m, deadline=deadline)
 
             if not sq_paths:
                 sq_paths = [()]
@@ -883,7 +885,8 @@ class SBSolver:
         Args:
             scramble_or_cube: Scramble move sequence string or initialized CubeState.
             k: Number of candidate paths to return (default 5).
-            style: Search style ("free", "all").
+            style: Search style ("all", "free", "square_pair", "classical").
+            order: Sub-step ordering ("best", "back_first", "front_first").
             orientation: Optional orientation filter (restricts to single color scheme).
             timeout_ms: Optional search timeout in milliseconds.
 
@@ -968,7 +971,7 @@ class SBSolver:
         if style not in VALID_STYLES:
             raise ValueError(f"Unknown style '{style}'. Allowed styles: {sorted(VALID_STYLES)}")
 
-        VALID_ORDERS = {"best", "back_first", "front_first", "direct"}
+        VALID_ORDERS = {"best", "back_first", "front_first"}
         if order not in VALID_ORDERS:
             raise ValueError(f"Unknown order '{order}'. Allowed orders: {sorted(VALID_ORDERS)}")
 
@@ -1048,7 +1051,7 @@ def solve_sb(
         k: Maximum candidate solutions to return (default 5).
         top_k: Alias for k.
         style: Search style ("all", "free", "classical", "square_pair").
-        order: Pair ordering ("best", "back_first", "front_first", "direct").
+        order: Pair ordering ("best", "back_first", "front_first").
         orientation: Optional First Block orientation filter.
         timeout_ms: Optional search timeout in milliseconds.
 
