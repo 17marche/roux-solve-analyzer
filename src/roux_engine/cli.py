@@ -271,6 +271,172 @@ def handle_generate_fb_pdb(argv: list[str]) -> int:
     return 0
 
 
+def verify_sb_pdb_completeness(sb_path: Path, rbs_path: Path, rfs_path: Path, quiet: bool = False) -> None:
+    """Verifies that all three Second Block PDB files are complete, valid, and fully reachable."""
+    from .solver.sb_pdb import (
+        SBPDB,
+        RightBackSquarePDB,
+        RightFrontSquarePDB,
+        SB_FILE_SIZE_BYTES,
+        RBS_FILE_SIZE_BYTES,
+        RFS_FILE_SIZE_BYTES,
+    )
+    from .solver.sb_indexer import (
+        TOTAL_SB_STATES,
+        TOTAL_RBS_STATES,
+        TOTAL_RFS_STATES,
+    )
+    import numpy as np
+
+    if not quiet:
+        print("-" * 80)
+        print("  Verifying Second Block pattern databases completeness and integrity...")
+
+    sb_pdb = SBPDB(pdb_path=sb_path)
+    if sb_pdb.size != TOTAL_SB_STATES:
+        raise ValueError(f"SB State count mismatch: {sb_pdb.size} != {TOTAL_SB_STATES}")
+    if sb_pdb.file_size_bytes != SB_FILE_SIZE_BYTES:
+        raise ValueError(f"SB File size mismatch: {sb_pdb.file_size_bytes} != {SB_FILE_SIZE_BYTES}")
+    if sb_pdb.get_distance(0) != 0:
+        raise ValueError(f"SB Canonical solved distance mismatch: {sb_pdb.get_distance(0)} != 0")
+
+    rbs_pdb = RightBackSquarePDB(pdb_path=rbs_path)
+    if rbs_pdb.size != TOTAL_RBS_STATES:
+        raise ValueError(f"RBS State count mismatch: {rbs_pdb.size} != {TOTAL_RBS_STATES}")
+    if rbs_pdb.file_size_bytes != RBS_FILE_SIZE_BYTES:
+        raise ValueError(f"RBS File size mismatch: {rbs_pdb.file_size_bytes} != {RBS_FILE_SIZE_BYTES}")
+    if rbs_pdb.get_distance(0) != 0:
+        raise ValueError(f"RBS Canonical solved distance mismatch: {rbs_pdb.get_distance(0)} != 0")
+
+    rfs_pdb = RightFrontSquarePDB(pdb_path=rfs_path)
+    if rfs_pdb.size != TOTAL_RFS_STATES:
+        raise ValueError(f"RFS State count mismatch: {rfs_pdb.size} != {TOTAL_RFS_STATES}")
+    if rfs_pdb.file_size_bytes != RFS_FILE_SIZE_BYTES:
+        raise ValueError(f"RFS File size mismatch: {rfs_pdb.file_size_bytes} != {RFS_FILE_SIZE_BYTES}")
+    if rfs_pdb.get_distance(0) != 0:
+        raise ValueError(f"RFS Canonical solved distance mismatch: {rfs_pdb.get_distance(0)} != 0")
+
+    raw_sb = np.asarray(sb_pdb._data)
+    if np.any((raw_sb & 0x0F) > 14) or np.any((raw_sb >> 4) > 14):
+        raise ValueError("SB database contains corrupted or unvisited distance values (> 14)")
+
+    raw_rbs = np.asarray(rbs_pdb._data)
+    if np.any((raw_rbs & 0x0F) > 10) or np.any((raw_rbs >> 4) > 10):
+        raise ValueError("RBS database contains corrupted or unvisited distance values (> 10)")
+
+    raw_rfs = np.asarray(rfs_pdb._data)
+    if np.any((raw_rfs & 0x0F) > 10) or np.any((raw_rfs >> 4) > 10):
+        raise ValueError("RFS database contains corrupted or unvisited distance values (> 10)")
+
+    total_bytes = SB_FILE_SIZE_BYTES + RBS_FILE_SIZE_BYTES + RFS_FILE_SIZE_BYTES
+    if not quiet:
+        print("  All databases verified:")
+        print(f"    • Full SB:      {TOTAL_SB_STATES:,} states within <= 14 moves ({SB_FILE_SIZE_BYTES:,} bytes)")
+        print(f"    • Right Back:   {TOTAL_RBS_STATES:,} states within <= 10 moves ({RBS_FILE_SIZE_BYTES:,} bytes)")
+        print(f"    • Right Front:  {TOTAL_RFS_STATES:,} states within <= 10 moves ({RFS_FILE_SIZE_BYTES:,} bytes)")
+        print(f"    • Total on-disk footprint: {total_bytes:,} bytes ({total_bytes / 1024:.1f} KB < 600 KB)")
+        print("    • Solved state distance is 0 across all tables.")
+        print("=" * 80)
+
+
+def handle_generate_sb_pdb(argv: list[str]) -> int:
+    """Handles the generate-sb-pdb subcommand."""
+    import time
+    from pathlib import Path
+    from .solver.sb_pdb_generator import (
+        generate_all_sb_pdbs,
+        get_default_sb_pdb_path,
+        get_default_rbs_pdb_path,
+        get_default_rfs_pdb_path,
+    )
+    from .solver.sb_pdb import (
+        SB_FILE_SIZE_BYTES,
+        RBS_FILE_SIZE_BYTES,
+        RFS_FILE_SIZE_BYTES,
+    )
+    from .solver.sb_indexer import (
+        TOTAL_SB_STATES,
+        TOTAL_RBS_STATES,
+        TOTAL_RFS_STATES,
+    )
+
+    parser = argparse.ArgumentParser(
+        prog="roux generate-sb-pdb",
+        description="Generate the canonical Second Block and Right Square Pattern Databases (PDBs)."
+    )
+    parser.add_argument(
+        "-o", "--output-dir",
+        type=str,
+        default=None,
+        help="Custom destination directory for binary files (default: src/roux_engine/data)"
+    )
+    parser.add_argument(
+        "--verify-only",
+        action="store_true",
+        help="Verify existing database files completeness and integrity without regenerating"
+    )
+    parser.add_argument(
+        "--verify",
+        action="store_true",
+        help="Ensure completeness verification runs after generation (default: True)"
+    )
+    parser.add_argument(
+        "-q", "--quiet",
+        action="store_true",
+        help="Suppress depth-by-depth progress output"
+    )
+    args = parser.parse_args(argv)
+
+    if args.output_dir:
+        out_dir = Path(args.output_dir)
+        sb_path = out_dir / "sb_pdb.bin"
+        rbs_path = out_dir / "rbs_pdb.bin"
+        rfs_path = out_dir / "rfs_pdb.bin"
+    else:
+        sb_path = get_default_sb_pdb_path()
+        rbs_path = get_default_rbs_pdb_path()
+        rfs_path = get_default_rfs_pdb_path()
+
+    if args.verify_only:
+        if not args.quiet:
+            print("=" * 80)
+            print("     SECOND BLOCK PATTERN DATABASES (PDB) VERIFICATION")
+            print("=" * 80)
+            print(f"  Target files: {sb_path}, {rbs_path}, {rfs_path}")
+        verify_sb_pdb_completeness(sb_path, rbs_path, rfs_path, quiet=args.quiet)
+        return 0
+
+    if not args.quiet:
+        print("=" * 80)
+        print("       SECOND BLOCK PATTERN DATABASES (PDB) GENERATOR")
+        print("=" * 80)
+        print("  Moveset:      <R, U, r, M> (12 moves, preserving First Block)")
+        print(f"  Full SB:      {TOTAL_SB_STATES:,} states ({SB_FILE_SIZE_BYTES:,} bytes)")
+        print(f"  Right Back:   {TOTAL_RBS_STATES:,} states ({RBS_FILE_SIZE_BYTES:,} bytes)")
+        print(f"  Right Front:  {TOTAL_RFS_STATES:,} states ({RFS_FILE_SIZE_BYTES:,} bytes)")
+        print(f"  Total space:  {SB_FILE_SIZE_BYTES + RBS_FILE_SIZE_BYTES + RFS_FILE_SIZE_BYTES:,} bytes (~549.2 KB)")
+        print("-" * 80)
+
+    t0 = time.time()
+
+    def progress_callback(name: str, depth: int, num_new: int, total: int, elapsed: float) -> None:
+        if not args.quiet:
+            print(f"  [{name.upper():<3}] Depth {depth:<2} | {num_new:>10,} | {total:>10,} | {elapsed:>6.2f}s", flush=True)
+
+    out_sb, out_rbs, out_rfs = generate_all_sb_pdbs(
+        output_dir=args.output_dir,
+        progress_callback=progress_callback,
+    )
+    total_time = time.time() - t0
+
+    if not args.quiet:
+        print("-" * 80)
+        print(f"  Generation finished in {total_time:.2f}s.")
+        print(f"  Saved tables to {out_sb.parent}.")
+
+    verify_sb_pdb_completeness(out_sb, out_rbs, out_rfs, quiet=args.quiet)
+    return 0
+
 
 def main(argv: Optional[list[str]] = None) -> int:
     if argv is None:
@@ -279,10 +445,17 @@ def main(argv: Optional[list[str]] = None) -> int:
     if argv and argv[0] == "generate-fb-pdb":
         return handle_generate_fb_pdb(argv[1:])
 
+    if argv and argv[0] == "generate-sb-pdb":
+        return handle_generate_sb_pdb(argv[1:])
+
     parser = argparse.ArgumentParser(
         prog="roux",
         description="Roux Speedcube Solve Segmenter and Diagnostics CLI",
-        epilog="Subcommands:\n  generate-fb-pdb    Generate First Block Pattern Database",
+        epilog=(
+            "Subcommands:\n"
+            "  generate-fb-pdb    Generate First Block Pattern Database\n"
+            "  generate-sb-pdb    Generate Second Block Pattern Databases"
+        ),
     )
     parser.add_argument("-s", "--scramble", type=str, help="Scramble move sequence")
     parser.add_argument("-sol", "--solution", type=str, help="Solution move sequence")
