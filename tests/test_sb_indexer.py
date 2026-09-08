@@ -225,7 +225,7 @@ class TestCompositeSBIndexing:
         """Sampled random indices across the full 1.08M state space roundtrip identically."""
         import random
         rng = random.Random(42)
-        sample_size = 500
+        sample_size = 1000
         for _ in range(sample_size):
             idx = rng.randint(0, SBIndexer.TOTAL_STATES - 1)
             cube = SBIndexer.decode(idx)
@@ -498,22 +498,7 @@ class TestRightFrontSquareIndexing:
 
 
 class TestSBIndexerIntegrationAndPerformance:
-    """Slice 6: Integration, convenience bindings, and performance benchmarks."""
-
-    def test_convenience_bindings_on_sb_indexer(self):
-        """SBIndexer convenience methods map directly to sub-indexers."""
-        cube = CubeState()
-        assert SBIndexer.encode_back_square(cube) == 0
-        assert SBIndexer.encode_front_square(cube) == 0
-
-        rbs_cube = SBIndexer.decode_back_square(0)
-        assert SBIndexer.encode_back_square(rbs_cube) == 0
-
-        rfs_cube = SBIndexer.decode_front_square(0)
-        assert SBIndexer.encode_front_square(rfs_cube) == 0
-
-        assert SBIndexer.BackSquare is RightBackSquareIndexer
-        assert SBIndexer.FrontSquare is RightFrontSquareIndexer
+    """Slice 6: Integration, validation, and performance benchmarks."""
 
     def test_encode_cube_with_fb_conflicts_raises_error(self):
         """Cubes with SB pieces in FB slots raise descriptive ValueError."""

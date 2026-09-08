@@ -8,8 +8,6 @@ from .sb_indexer import (
     RightBackSquarePlacement,
     RightFrontSquareIndexer,
     RightFrontSquarePlacement,
-    SBBackSquareIndexer,
-    SBFrontSquareIndexer,
 )
 from .pdb_generator import FB_MOVESET, generate_fb_pdb, get_default_pdb_path
 from .fb_pdb import FBPDB
@@ -38,8 +36,6 @@ __all__ = [
     "RightBackSquarePlacement",
     "RightFrontSquareIndexer",
     "RightFrontSquarePlacement",
-    "SBBackSquareIndexer",
-    "SBFrontSquareIndexer",
     "FBPDB",
     "FB_MOVESET",
     "generate_fb_pdb",

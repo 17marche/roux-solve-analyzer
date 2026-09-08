@@ -495,11 +495,6 @@ class RightFrontSquareIndexer:
         )
 
 
-# Aliases for Right Square sub-indexers
-SBBackSquareIndexer = RightBackSquareIndexer
-SBFrontSquareIndexer = RightFrontSquareIndexer
-
-
 # -----------------------------------------------------------------------------
 # Full Second Block Indexer (1,088,640 states)
 # -----------------------------------------------------------------------------
@@ -511,30 +506,6 @@ class SBIndexer:
     NUM_EDGE_CONFIGS: int = NUM_SB_EDGE_CONFIGS
     NUM_CORNER_CONFIGS: int = NUM_SB_CORNER_CONFIGS
     CANONICAL_SOLVED_INDEX: int = 0
-
-    # Class references to sub-indexers
-    BackSquare: type[RightBackSquareIndexer] = RightBackSquareIndexer
-    FrontSquare: type[RightFrontSquareIndexer] = RightFrontSquareIndexer
-
-    @classmethod
-    def encode_back_square(cls, cube: CubeState) -> int:
-        """Encodes Right Back Square pieces from a CubeState to [0, 5183]."""
-        return RightBackSquareIndexer.encode(cube)
-
-    @classmethod
-    def decode_back_square(cls, index: int) -> CubeState:
-        """Decodes Right Back Square index in [0, 5183] to CubeState."""
-        return RightBackSquareIndexer.decode(index)
-
-    @classmethod
-    def encode_front_square(cls, cube: CubeState) -> int:
-        """Encodes Right Front Square pieces from a CubeState to [0, 5183]."""
-        return RightFrontSquareIndexer.encode(cube)
-
-    @classmethod
-    def decode_front_square(cls, index: int) -> CubeState:
-        """Decodes Right Front Square index in [0, 5183] to CubeState."""
-        return RightFrontSquareIndexer.decode(index)
 
     @classmethod
     def encode_corners(cls, dfr_slot: int, dfr_co: int, dbr_slot: int, dbr_co: int) -> int:
