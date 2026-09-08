@@ -339,6 +339,34 @@ class TestSBPDBLoaders:
         with pytest.raises(FileNotFoundError, match="generate-sb-pdb"):
             SBPDB(pdb_path=tmp_path / "nonexistent.bin")
 
+    def test_automatic_mmap_fallback(self, monkeypatch):
+        """If np.memmap fails with OSError, loader automatically falls back to contiguous array."""
+        import numpy as np
+        from roux_engine.solver.sb_pdb import SBPDB
+
+        def mock_memmap(*args, **kwargs):
+            raise OSError("Simulated mmap failure")
+
+        monkeypatch.setattr(np, "memmap", mock_memmap)
+        pdb = SBPDB()
+        assert pdb.is_loaded
+        assert pdb.get_distance(0) == 0
+
+    def test_verify_integrity_detects_corrupted_depths(self, tmp_path):
+        """verify_integrity raises ValueError if table contains distance values exceeding max_depth."""
+        from roux_engine.solver.sb_pdb import RightBackSquarePDB, RBS_FILE_SIZE_BYTES
+
+        bad_file = tmp_path / "bad_rbs.bin"
+        # Solved state (index 0) has distance 0, but later byte has depth 15
+        data = bytearray(b"\x00" * RBS_FILE_SIZE_BYTES)
+        data[1] = 0xFF
+        bad_file.write_bytes(data)
+
+        bad_pdb = RightBackSquarePDB(pdb_path=bad_file)
+        with pytest.raises(ValueError, match="corrupted or unvisited"):
+            bad_pdb.verify_integrity(max_depth=10)
+
+
 
 class TestCLIGenerateSBPDB:
     """Slice 4: CLI command `generate-sb-pdb`."""
@@ -401,6 +429,29 @@ class TestCLIGenerateSBPDB:
         assert exit_code == 0
         captured = capsys.readouterr()
         assert "verified" in captured.out.lower() or "complete" in captured.out.lower()
+
+    def test_cli_generate_sb_pdb_no_verify(self, monkeypatch, tmp_path, capsys):
+        """`generate-sb-pdb --no-verify` skips verification step."""
+        from roux_engine.cli import main
+        from roux_engine.solver.sb_pdb import SB_FILE_SIZE_BYTES, RBS_FILE_SIZE_BYTES, RFS_FILE_SIZE_BYTES
+        from pathlib import Path
+
+        def mock_generate_all(output_dir=None, progress_callback=None):
+            out_dir = Path(output_dir) if output_dir else tmp_path
+            p_sb = out_dir / "sb_pdb.bin"
+            p_rbs = out_dir / "rbs_pdb.bin"
+            p_rfs = out_dir / "rfs_pdb.bin"
+            p_sb.write_bytes(b"\x00" * SB_FILE_SIZE_BYTES)
+            p_rbs.write_bytes(b"\x00" * RBS_FILE_SIZE_BYTES)
+            p_rfs.write_bytes(b"\x00" * RFS_FILE_SIZE_BYTES)
+            return p_sb, p_rbs, p_rfs
+
+        monkeypatch.setattr("roux_engine.solver.sb_pdb_generator.generate_all_sb_pdbs", mock_generate_all)
+        exit_code = main(["generate-sb-pdb", "--output-dir", str(tmp_path), "--no-verify"])
+        assert exit_code == 0
+        captured = capsys.readouterr()
+        assert "Verifying" not in captured.out
+
 
 
 @pytest.fixture(scope="module")

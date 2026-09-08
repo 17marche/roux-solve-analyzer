@@ -59,12 +59,32 @@ class _PackedPDBBase:
             )
 
         if mmap:
-            self._data: np.ndarray = np.memmap(self.path, dtype=np.uint8, mode="r")
+            try:
+                self._data: np.ndarray = np.memmap(self.path, dtype=np.uint8, mode="r")
+            except (OSError, PermissionError):
+                self._data = np.fromfile(self.path, dtype=np.uint8)
         else:
             self._data = np.fromfile(self.path, dtype=np.uint8)
 
     def _get_default_path(self) -> Path:
         raise NotImplementedError
+
+    def verify_integrity(self, max_depth: int) -> None:
+        """Validates database state count, canonical solved distance, and distance bounds."""
+        if self.size != self.TOTAL_STATES:
+            raise ValueError(f"{self._name} state count mismatch: {self.size} != {self.TOTAL_STATES}")
+        if self.file_size_bytes != self.FILE_SIZE_BYTES:
+            raise ValueError(f"{self._name} file size mismatch: {self.file_size_bytes} != {self.FILE_SIZE_BYTES}")
+        if self.get_distance(0) != 0:
+            raise ValueError(f"{self._name} canonical solved distance mismatch: {self.get_distance(0)} != 0")
+
+        raw_bytes = np.asarray(self._data)
+        low_nibbles = raw_bytes & 0x0F
+        high_nibbles = raw_bytes >> 4
+        if np.any(low_nibbles > max_depth) or np.any(high_nibbles > max_depth):
+            raise ValueError(
+                f"{self._name} contains corrupted or unvisited distance values (> {max_depth})"
+            )
 
     @property
     def size(self) -> int:

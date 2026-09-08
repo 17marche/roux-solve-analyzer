@@ -192,20 +192,22 @@ def build_rfs_transition_tables(
     return corner_trans, edge_trans
 
 
-def generate_rbs_pdb(
-    output_path: Optional[Union[str, Path]] = None,
+def _generate_square_pdb(
+    name: str,
+    corner_trans: np.ndarray,
+    edge_trans: np.ndarray,
+    num_corner_configs: int,
+    total_states: int,
+    output_path: Path,
     progress_callback: Optional[Callable[[int, int, int, float], None]] = None,
 ) -> Path:
-    """Generates the 5,184-state Right Back Square PDB via BFS and packs into 2,592 bytes."""
-    out = Path(output_path) if output_path is not None else get_default_rbs_pdb_path()
-    out.parent.mkdir(parents=True, exist_ok=True)
+    """Shared BFS generation for 5,184-state Right Square pattern databases."""
+    output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    corner_trans, edge_trans = build_rbs_transition_tables()
-
-    dist = np.full(TOTAL_RBS_STATES, 255, dtype=np.uint8)
+    dist = np.full(total_states, 255, dtype=np.uint8)
     dist[0] = 0
     frontier = np.array([0], dtype=np.int32)
-    total_states = 1
+    accumulated_states = 1
 
     if progress_callback:
         progress_callback(0, 1, 1, 0.0)
@@ -214,27 +216,45 @@ def generate_rbs_pdb(
     while len(frontier) > 0:
         depth += 1
         t_depth_start = time.time()
-        f_e = frontier // NUM_RBS_CORNER_CONFIGS
-        f_c = frontier % NUM_RBS_CORNER_CONFIGS
+        frontier_edges = frontier // num_corner_configs
+        frontier_corners = frontier % num_corner_configs
 
-        new_indices = (edge_trans[f_e] * NUM_RBS_CORNER_CONFIGS + corner_trans[f_c]).ravel()
+        new_indices = (edge_trans[frontier_edges] * num_corner_configs + corner_trans[frontier_corners]).ravel()
         flat_indices = np.unique(new_indices)
         unvisited = flat_indices[dist[flat_indices] == 255]
         dist[unvisited] = depth
         frontier = unvisited
-        total_states += len(frontier)
+        accumulated_states += len(frontier)
         elapsed = time.time() - t_depth_start
 
         if progress_callback:
-            progress_callback(depth, len(frontier), total_states, elapsed)
+            progress_callback(depth, len(frontier), accumulated_states, elapsed)
 
     unvisited_count = int(np.count_nonzero(dist == 255))
     if unvisited_count > 0:
-        raise RuntimeError(f"RBS BFS incomplete: {unvisited_count} states unreachable")
+        raise RuntimeError(f"{name} BFS incomplete: {unvisited_count} states unreachable")
 
     packed = pack_distances_nibbles(dist)
-    packed.tofile(out)
-    return out
+    packed.tofile(output_path)
+    return output_path
+
+
+def generate_rbs_pdb(
+    output_path: Optional[Union[str, Path]] = None,
+    progress_callback: Optional[Callable[[int, int, int, float], None]] = None,
+) -> Path:
+    """Generates the 5,184-state Right Back Square PDB via BFS and packs into 2,592 bytes."""
+    out = Path(output_path) if output_path is not None else get_default_rbs_pdb_path()
+    corner_trans, edge_trans = build_rbs_transition_tables()
+    return _generate_square_pdb(
+        name="RBS",
+        corner_trans=corner_trans,
+        edge_trans=edge_trans,
+        num_corner_configs=NUM_RBS_CORNER_CONFIGS,
+        total_states=TOTAL_RBS_STATES,
+        output_path=out,
+        progress_callback=progress_callback,
+    )
 
 
 def generate_rfs_pdb(
@@ -243,43 +263,16 @@ def generate_rfs_pdb(
 ) -> Path:
     """Generates the 5,184-state Right Front Square PDB via BFS and packs into 2,592 bytes."""
     out = Path(output_path) if output_path is not None else get_default_rfs_pdb_path()
-    out.parent.mkdir(parents=True, exist_ok=True)
-
     corner_trans, edge_trans = build_rfs_transition_tables()
-
-    dist = np.full(TOTAL_RFS_STATES, 255, dtype=np.uint8)
-    dist[0] = 0
-    frontier = np.array([0], dtype=np.int32)
-    total_states = 1
-
-    if progress_callback:
-        progress_callback(0, 1, 1, 0.0)
-
-    depth = 0
-    while len(frontier) > 0:
-        depth += 1
-        t_depth_start = time.time()
-        f_e = frontier // NUM_RFS_CORNER_CONFIGS
-        f_c = frontier % NUM_RFS_CORNER_CONFIGS
-
-        new_indices = (edge_trans[f_e] * NUM_RFS_CORNER_CONFIGS + corner_trans[f_c]).ravel()
-        flat_indices = np.unique(new_indices)
-        unvisited = flat_indices[dist[flat_indices] == 255]
-        dist[unvisited] = depth
-        frontier = unvisited
-        total_states += len(frontier)
-        elapsed = time.time() - t_depth_start
-
-        if progress_callback:
-            progress_callback(depth, len(frontier), total_states, elapsed)
-
-    unvisited_count = int(np.count_nonzero(dist == 255))
-    if unvisited_count > 0:
-        raise RuntimeError(f"RFS BFS incomplete: {unvisited_count} states unreachable")
-
-    packed = pack_distances_nibbles(dist)
-    packed.tofile(out)
-    return out
+    return _generate_square_pdb(
+        name="RFS",
+        corner_trans=corner_trans,
+        edge_trans=edge_trans,
+        num_corner_configs=NUM_RFS_CORNER_CONFIGS,
+        total_states=TOTAL_RFS_STATES,
+        output_path=out,
+        progress_callback=progress_callback,
+    )
 
 
 def generate_sb_pdb(

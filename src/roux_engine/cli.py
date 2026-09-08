@@ -293,40 +293,13 @@ def verify_sb_pdb_completeness(sb_path: Path, rbs_path: Path, rfs_path: Path, qu
         print("  Verifying Second Block pattern databases completeness and integrity...")
 
     sb_pdb = SBPDB(pdb_path=sb_path)
-    if sb_pdb.size != TOTAL_SB_STATES:
-        raise ValueError(f"SB State count mismatch: {sb_pdb.size} != {TOTAL_SB_STATES}")
-    if sb_pdb.file_size_bytes != SB_FILE_SIZE_BYTES:
-        raise ValueError(f"SB File size mismatch: {sb_pdb.file_size_bytes} != {SB_FILE_SIZE_BYTES}")
-    if sb_pdb.get_distance(0) != 0:
-        raise ValueError(f"SB Canonical solved distance mismatch: {sb_pdb.get_distance(0)} != 0")
+    sb_pdb.verify_integrity(max_depth=14)
 
     rbs_pdb = RightBackSquarePDB(pdb_path=rbs_path)
-    if rbs_pdb.size != TOTAL_RBS_STATES:
-        raise ValueError(f"RBS State count mismatch: {rbs_pdb.size} != {TOTAL_RBS_STATES}")
-    if rbs_pdb.file_size_bytes != RBS_FILE_SIZE_BYTES:
-        raise ValueError(f"RBS File size mismatch: {rbs_pdb.file_size_bytes} != {RBS_FILE_SIZE_BYTES}")
-    if rbs_pdb.get_distance(0) != 0:
-        raise ValueError(f"RBS Canonical solved distance mismatch: {rbs_pdb.get_distance(0)} != 0")
+    rbs_pdb.verify_integrity(max_depth=10)
 
     rfs_pdb = RightFrontSquarePDB(pdb_path=rfs_path)
-    if rfs_pdb.size != TOTAL_RFS_STATES:
-        raise ValueError(f"RFS State count mismatch: {rfs_pdb.size} != {TOTAL_RFS_STATES}")
-    if rfs_pdb.file_size_bytes != RFS_FILE_SIZE_BYTES:
-        raise ValueError(f"RFS File size mismatch: {rfs_pdb.file_size_bytes} != {RFS_FILE_SIZE_BYTES}")
-    if rfs_pdb.get_distance(0) != 0:
-        raise ValueError(f"RFS Canonical solved distance mismatch: {rfs_pdb.get_distance(0)} != 0")
-
-    raw_sb = np.asarray(sb_pdb._data)
-    if np.any((raw_sb & 0x0F) > 14) or np.any((raw_sb >> 4) > 14):
-        raise ValueError("SB database contains corrupted or unvisited distance values (> 14)")
-
-    raw_rbs = np.asarray(rbs_pdb._data)
-    if np.any((raw_rbs & 0x0F) > 10) or np.any((raw_rbs >> 4) > 10):
-        raise ValueError("RBS database contains corrupted or unvisited distance values (> 10)")
-
-    raw_rfs = np.asarray(rfs_pdb._data)
-    if np.any((raw_rfs & 0x0F) > 10) or np.any((raw_rfs >> 4) > 10):
-        raise ValueError("RFS database contains corrupted or unvisited distance values (> 10)")
+    rfs_pdb.verify_integrity(max_depth=10)
 
     total_bytes = SB_FILE_SIZE_BYTES + RBS_FILE_SIZE_BYTES + RFS_FILE_SIZE_BYTES
     if not quiet:
@@ -377,8 +350,16 @@ def handle_generate_sb_pdb(argv: list[str]) -> int:
     )
     parser.add_argument(
         "--verify",
+        dest="verify",
         action="store_true",
+        default=True,
         help="Ensure completeness verification runs after generation (default: True)"
+    )
+    parser.add_argument(
+        "--no-verify",
+        dest="verify",
+        action="store_false",
+        help="Skip completeness verification after generation"
     )
     parser.add_argument(
         "-q", "--quiet",
@@ -434,7 +415,8 @@ def handle_generate_sb_pdb(argv: list[str]) -> int:
         print(f"  Generation finished in {total_time:.2f}s.")
         print(f"  Saved tables to {out_sb.parent}.")
 
-    verify_sb_pdb_completeness(out_sb, out_rbs, out_rfs, quiet=args.quiet)
+    if args.verify:
+        verify_sb_pdb_completeness(out_sb, out_rbs, out_rfs, quiet=args.quiet)
     return 0
 
 
