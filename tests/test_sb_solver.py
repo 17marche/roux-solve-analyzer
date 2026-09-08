@@ -96,21 +96,25 @@ class TestSBCenterAlignmentAndSolutionModel:
         assert is_center_aligned_sb_solved(clean, block)
 
     def test_misaligned_centers_reject_sb_solved(self):
-        """When 5 SB pieces are solved but M-slice centers are rotated (M, M2, M'), goal must be False."""
+        """When 5 SB pieces are solved: M/M' are off-axis (rejected); M2 preserves U/D axis (accepted)."""
         from roux_engine.core.cube import CubeState
         from roux_engine.solver.sb_solver import is_center_aligned_sb_solved, get_m_slice_center_offset
         from roux_engine.segmenter.fb_detector import ALL_BLOCK_DEFINITIONS
         from roux_engine.segmenter.sb_detector import SBDetector
 
         block = ALL_BLOCK_DEFINITIONS[""]
-        for m_move in ("M", "M2", "M'"):
+        # M and M' rotate centers to F/B axis (offset 1 and 3): not center-aligned
+        for m_move in ("M", "M'"):
             c = CubeState().apply_move(m_move)
-            # Second Block 5 pieces are physically untouched by M
             assert SBDetector.is_canonical_sb_solved(c)
-            # Center offset must be non-zero
-            assert get_m_slice_center_offset(c, block) != 0
-            # Center-aligned SB goal must be strictly False
+            assert get_m_slice_center_offset(c, block) in (1, 3)
             assert not is_center_aligned_sb_solved(c, block)
+
+        # M2 rotates centers by 180 (offset 2), keeping them along U/D axis: aligned
+        c_m2 = CubeState().apply_move("M2")
+        assert SBDetector.is_canonical_sb_solved(c_m2)
+        assert get_m_slice_center_offset(c_m2, block) == 2
+        assert is_center_aligned_sb_solved(c_m2, block)
 
     def test_center_transition_matrix(self):
         """Center transition table must accurately model M and r moves modulo 4."""
@@ -194,19 +198,20 @@ class TestSBSolverCanonicalSearch:
                 assert m in valid_tokens, f"Illegal move token outside <R, U, r, M>: {m}"
 
     def test_center_alignment_enforced_when_pieces_solved_early(self):
-        """When 5 SB pieces are solved but centers are off by M2, solver must align centers."""
+        """When 5 SB pieces are solved but centers are off-axis by M, solver must align centers."""
         from roux_engine.core.cube import CubeState
         from roux_engine.solver.sb_solver import SBSolver, is_center_aligned_sb_solved
         from roux_engine.segmenter.fb_detector import FBDetector
 
-        # M2 preserves all 5 SB pieces and FB, but rotates M-slice centers by 2
-        c = CubeState().apply_move("M2")
+        # M preserves all 5 SB pieces and FB, but rotates M-slice centers by 1 (off-axis)
+        c = CubeState().apply_move("M")
         solver = SBSolver.get_instance()
         sols = solver.solve(c, k=3)
         assert len(sols) > 0
         top = sols[0]
         assert top.move_count == 1
-        assert top.moves == ("M2",)
+        # M' brings centers back to offset 0, M brings them to offset 2 (both on U/D axis)
+        assert top.moves in (("M'",), ("M",))
 
         final_cube = c.copy().apply_moves(" ".join(top.moves))
         assert FBDetector.is_canonical_fb_solved(final_cube)

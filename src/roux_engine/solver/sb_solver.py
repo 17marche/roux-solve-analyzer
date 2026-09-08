@@ -137,11 +137,11 @@ def is_center_aligned_sb_solved(
 ) -> bool:
     """Checks if Center-Aligned Second Block is strictly solved:
     1. All 5 Second Block pieces (DR, FR, BR, DFR, DRB) are solved.
-    2. M-slice centers (U, D, F, B) match their solved colors (offset 0).
+    2. M-slice centers (U, D, F, B) are aligned with the U/D axis (offset 0 or 2).
     """
     if not SBDetector.is_right_1x2x3_block_solved(cube, block):
         return False
-    return get_m_slice_center_offset(cube, block) == 0
+    return get_m_slice_center_offset(cube, block) % 2 == 0
 
 
 # -----------------------------------------------------------------------------
@@ -217,7 +217,7 @@ class SBSolver:
     def _heuristic(self, state_idx: int, center_off: int) -> int:
         """Returns exact PDB heuristic distance with Center-Aligned SB penalty."""
         h = self._get_distance(state_idx)
-        if center_off != 0 and h == 0:
+        if center_off % 2 != 0 and h == 0:
             return 1
         return h
 
