@@ -21,3 +21,27 @@ packages = ["src/roux_engine"]
 [tool.pytest.ini_options]
 pythonpath = ["src"]
 testpaths = ["tests"]
+
+[dependency-groups]
+dev = [
+    "mypy>=2.3.1",
+    "pytest>=9.1.1",
+    "ruff>=0.16.6",
+]
+
+[tool.mypy]
+warn_unused_configs = true
+ignore_missing_imports = true
+files = ["src"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+
+[tool.ruff.lint]
+select = [
+    "F",    # Pyflakes (syntax errors, undefined variables, name errors)
+]
+ignore = [
+    "F401", # unused-import (transitional re-exports and module helpers)
+]

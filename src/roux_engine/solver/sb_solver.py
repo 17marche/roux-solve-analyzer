@@ -8,7 +8,7 @@ Enforces Center-Aligned SB goal condition and dual-neutral symmetry re-mapping.
 from __future__ import annotations
 from collections import deque
 from dataclasses import dataclass
-from typing import List, Tuple, Sequence, Optional
+from typing import List, Tuple, Sequence, Optional, Union, Any
 
 from .sb_pdb_generator import SB_MOVESET
 
@@ -171,12 +171,11 @@ def is_center_aligned_sb_solved(
 # -----------------------------------------------------------------------------
 
 import time
-from typing import Dict, Set, Union
+from typing import Dict, Set
 from ..core.parser import MoveParser
 from ..segmenter.cmll_classifier import CMLLClassifier
 from .sb_indexer import (
     SBIndexer,
-    SBPlacement,
     NUM_SB_CORNER_CONFIGS,
     RightBackSquareIndexer,
     NUM_RBS_CORNER_CONFIGS,
@@ -578,7 +577,7 @@ class SBSolver:
         if start_state == 14:
             return [()]
 
-        queue = deque([(start_state, -1, ())])
+        queue: deque[Tuple[int, int, Tuple[str, ...]]] = deque([(start_state, -1, ())])
         sols: List[Tuple[str, ...]] = []
         found_depth: Optional[int] = None
 
@@ -922,6 +921,7 @@ class SBSolver:
 
             if matched is not None:
                 ori = matched
+                assert matched.symmetry is not None
                 sym = matched.symmetry  # guaranteed non-None for dual-neutral
                 uninspected = False
             else:

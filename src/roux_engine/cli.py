@@ -3,6 +3,7 @@
 from __future__ import annotations
 import argparse
 import json
+from pathlib import Path
 import sys
 from typing import Optional
 
@@ -56,7 +57,7 @@ def format_solve_report(solve: SegmentedSolve) -> str:
             fb_header = "0 moves"
         else:
             fb_s = "s" if solve.fb.move_count_stm != 1 else ""
-            fb_header = f"{fb_moves} // {solve.fb.move_count_stm} move{fb_s}" if fb_moves else f"0 moves"
+            fb_header = f"{fb_moves} // {solve.fb.move_count_stm} move{fb_s}" if fb_moves else "0 moves"
 
         lines.append(f"  • {'First Block (FB):':<22} {fb_header}")
 
@@ -245,7 +246,7 @@ def handle_generate_fb_pdb(argv: list[str]) -> int:
         print("=" * 80)
         print(f"  Target file:  {out_path}")
         print(f"  Total states: {TOTAL_STATES:,}")
-        print(f"  Moveset:      <U, D, R, F, B, r, M> (21 moves, ADR-0001)")
+        print("  Moveset:      <U, D, R, F, B, r, M> (21 moves, ADR-0001)")
         print(f"  Storage:      4-bit nibbles ({FILE_SIZE_BYTES:,} bytes)")
         print("-" * 80)
         print(f"  {'Depth':<7} | {'New States':<14} | {'Total States':<14} | {'Layer Time':<10}")
