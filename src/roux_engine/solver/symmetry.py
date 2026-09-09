@@ -19,27 +19,6 @@ from ..core.orientation import (
 )
 from .fb_indexer import FBIndexer, FBPlacement
 
-# Precomputed lookup maps
-_STRING_TO_SYMMETRY: Dict[str, CanonicalSymmetry] = {
-    "": CanonicalSymmetry.I,
-    "i": CanonicalSymmetry.I,
-    "identity": CanonicalSymmetry.I,
-    "y": CanonicalSymmetry.Y,
-    "y2": CanonicalSymmetry.Y2,
-    "y'": CanonicalSymmetry.Y_PRIME,
-    "x2": CanonicalSymmetry.X2,
-    "x2 y": CanonicalSymmetry.X2_Y,
-    "x2y": CanonicalSymmetry.X2_Y,
-    "x2 y2": CanonicalSymmetry.X2_Y2,
-    "x2y2": CanonicalSymmetry.X2_Y2,
-    "x2 y'": CanonicalSymmetry.X2_Y_PRIME,
-    "x2y'": CanonicalSymmetry.X2_Y_PRIME,
-}
-
-_COLOR_PAIR_TO_SYMMETRY: Dict[Tuple[Color, Color], CanonicalSymmetry] = {
-    (sym.bottom_color, sym.left_color): sym for sym in CanonicalSymmetry
-}
-
 
 def get_all_symmetries() -> List[CanonicalSymmetry]:
     """Returns all 8 dual-neutral symmetries in the x2y subgroup G."""
@@ -58,46 +37,13 @@ def get_symmetry(identifier: Union[str, CanonicalSymmetry, Tuple[Color, Color]])
     """
     if isinstance(identifier, CanonicalSymmetry):
         return identifier
-
-    if isinstance(identifier, tuple) and len(identifier) == 2:
-        c1, c2 = identifier
-        if isinstance(c1, int) and not isinstance(c1, Color):
-            try:
-                c1 = Color(c1)
-            except ValueError:
-                pass
-        if isinstance(c2, int) and not isinstance(c2, Color):
-            try:
-                c2 = Color(c2)
-            except ValueError:
-                pass
-        if isinstance(c1, Color) and isinstance(c2, Color):
-            if (c1, c2) in _COLOR_PAIR_TO_SYMMETRY:
-                return _COLOR_PAIR_TO_SYMMETRY[(c1, c2)]
-            raise ValueError(f"No dual-neutral symmetry with colors bottom={c1.name}, left={c2.name}")
-
-    if isinstance(identifier, str):
-        normalized = identifier.strip().lower()
-        if normalized in _STRING_TO_SYMMETRY:
-            return _STRING_TO_SYMMETRY[normalized]
-
-        # Check hyphenated colors e.g. "white-blue" or "yellow-green"
-        if "-" in normalized:
-            parts = normalized.split("-")
-            if len(parts) == 2:
-                try:
-                    c_bottom = Color[parts[0].upper()]
-                    c_left = Color[parts[1].upper()]
-                    if (c_bottom, c_left) in _COLOR_PAIR_TO_SYMMETRY:
-                        return _COLOR_PAIR_TO_SYMMETRY[(c_bottom, c_left)]
-                except KeyError:
-                    pass
-
-        # Check if uppercase matches
-        if identifier in _STRING_TO_SYMMETRY:
-            return _STRING_TO_SYMMETRY[identifier]
-
-    raise ValueError(f"Unrecognized symmetry identifier: {identifier!r}")
+    try:
+        ori = get_orientation(identifier)
+        if ori.symmetry is not None:
+            return ori.symmetry
+        raise ValueError(f"Orientation {ori.rotations!r} is not dual-neutral")
+    except ValueError:
+        raise ValueError(f"Unrecognized symmetry identifier: {identifier!r}")
 
 
 # -----------------------------------------------------------------------------
@@ -197,18 +143,7 @@ def is_fb_solved_for_symmetry(
     sym = get_symmetry(symmetry)
     ori = get_orientation(sym)
     c_inspected = _ensure_inspected_cube(cube, sym, inspected)
-
-    if c_inspected.ep[Edge.DL] != ori.dl_piece or c_inspected.eo[Edge.DL] != ori.dl_eo:
-        return False
-    if c_inspected.ep[Edge.FL] != ori.fl_piece or c_inspected.eo[Edge.FL] != ori.fl_eo:
-        return False
-    if c_inspected.ep[Edge.BL] != ori.bl_piece or c_inspected.eo[Edge.BL] != ori.bl_eo:
-        return False
-    if c_inspected.cp[Corner.DLF] != ori.dlf_piece or c_inspected.co[Corner.DLF] != ori.dlf_co:
-        return False
-    if c_inspected.cp[Corner.DBL] != ori.dbl_piece or c_inspected.co[Corner.DBL] != ori.dbl_co:
-        return False
-    return True
+    return ori.is_fb_solved(c_inspected)
 
 
 __all__ = [

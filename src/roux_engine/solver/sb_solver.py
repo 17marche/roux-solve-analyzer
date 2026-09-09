@@ -156,7 +156,7 @@ def is_center_aligned_sb_solved(
     block: Optional[Any] = None,
 ) -> bool:
     """Checks if Center-Aligned Second Block is strictly solved:
-    1. All 5 Second Block pieces (DR, FR, BR, DFR, DRB) are solved.
+    1. All 5 Second Block pieces (DR, FR, BR, DFR, DBR) are solved.
     2. M-slice centers (U, D, F, B) are aligned with the U/D axis (offset 0 or 2).
 
     Delegates directly to RouxOrientation.is_center_aligned_sb_solved.
@@ -300,7 +300,7 @@ class SBSolver:
         self,
         base_cube: CubeState,
         moves: Tuple[str, ...],
-        block: RouxOrientation,
+        ori: RouxOrientation,
         orientation: str,
         uninspected: bool,
         sym: CanonicalSymmetry,
@@ -313,7 +313,7 @@ class SBSolver:
         if moves:
             c_eval.apply_moves(" ".join(moves))
 
-        case_id, group, pre_auf = CMLLClassifier.classify_state(c_eval, block)
+        case_id, group, pre_auf = CMLLClassifier.classify_state(c_eval, ori)
         cmll_case = "Skip" if case_id == "solved" else case_id
 
         # If input was in uninspected frame, transform moves back to original user frame
@@ -328,10 +328,10 @@ class SBSolver:
         square_move_idx: Optional[int] = None
 
         sim = base_cube.copy()
-        if block.is_dr_solved(sim):
+        if ori.is_dr_solved(sim):
             dr_move_idx = 0
-        back_init = block.is_back_pair_solved(sim)
-        front_init = block.is_front_pair_solved(sim)
+        back_init = ori.is_back_pair_solved(sim)
+        front_init = ori.is_front_pair_solved(sim)
         if back_init or front_init:
             pair1_move_idx = 0
         if dr_move_idx == 0 and pair1_move_idx == 0:
@@ -339,9 +339,9 @@ class SBSolver:
 
         for idx, m_token in enumerate(moves):
             sim.apply_move(m_token)
-            dr_ok = block.is_dr_solved(sim)
-            back_ok = block.is_back_pair_solved(sim)
-            front_ok = block.is_front_pair_solved(sim)
+            dr_ok = ori.is_dr_solved(sim)
+            back_ok = ori.is_back_pair_solved(sim)
+            front_ok = ori.is_front_pair_solved(sim)
             pair1_ok = back_ok or front_ok
             square_ok = dr_ok and pair1_ok
 
@@ -440,7 +440,7 @@ class SBSolver:
     def _solve_square_pair_order(
         self,
         base_cube: CubeState,
-        block: RouxOrientation,
+        ori: RouxOrientation,
         sym: CanonicalSymmetry,
         uninspected: bool,
         ori_str: str,
@@ -484,7 +484,7 @@ class SBSolver:
                         self._build_solution(
                             base_cube=base_cube,
                             moves=combined,
-                            block=block,
+                            ori=ori,
                             orientation=ori_str,
                             uninspected=uninspected,
                             sym=sym,
@@ -516,7 +516,7 @@ class SBSolver:
                             self._build_solution(
                                 base_cube=base_cube,
                                 moves=combined,
-                                block=block,
+                                ori=ori,
                                 orientation=ori_str,
                                 uninspected=uninspected,
                                 sym=sym,
@@ -531,7 +531,7 @@ class SBSolver:
     def _solve_square_pair(
         self,
         base_cube: CubeState,
-        block: RouxOrientation,
+        ori: RouxOrientation,
         sym: CanonicalSymmetry,
         uninspected: bool,
         ori_str: str,
@@ -546,15 +546,15 @@ class SBSolver:
         """Solves SB using Square + Pair paradigm (best, back_first, or front_first)."""
         if order in ("back_first", "front_first"):
             return self._solve_square_pair_order(
-                base_cube, block, sym, uninspected, ori_str,
+                base_cube, ori, sym, uninspected, ori_str,
                 placement, c_idx, e_idx, center_off, k, order, deadline
             )
         sols_back = self._solve_square_pair_order(
-            base_cube, block, sym, uninspected, ori_str,
+            base_cube, ori, sym, uninspected, ori_str,
             placement, c_idx, e_idx, center_off, k, "back_first", deadline
         )
         sols_front = self._solve_square_pair_order(
-            base_cube, block, sym, uninspected, ori_str,
+            base_cube, ori, sym, uninspected, ori_str,
             placement, c_idx, e_idx, center_off, k, "front_first", deadline
         )
         combined: List[SBSolution] = []
@@ -608,7 +608,7 @@ class SBSolver:
     def _solve_classical_order(
         self,
         base_cube: CubeState,
-        block: RouxOrientation,
+        ori: RouxOrientation,
         sym: CanonicalSymmetry,
         uninspected: bool,
         ori_str: str,
@@ -666,7 +666,7 @@ class SBSolver:
                             self._build_solution(
                                 base_cube=base_cube,
                                 moves=combined,
-                                block=block,
+                                ori=ori,
                                 orientation=ori_str,
                                 uninspected=uninspected,
                                 sym=sym,
@@ -698,7 +698,7 @@ class SBSolver:
                                 self._build_solution(
                                     base_cube=base_cube,
                                     moves=combined,
-                                    block=block,
+                                    ori=ori,
                                     orientation=ori_str,
                                     uninspected=uninspected,
                                     sym=sym,
@@ -713,7 +713,7 @@ class SBSolver:
     def _solve_classical(
         self,
         base_cube: CubeState,
-        block: RouxOrientation,
+        ori: RouxOrientation,
         sym: CanonicalSymmetry,
         uninspected: bool,
         ori_str: str,
@@ -728,15 +728,15 @@ class SBSolver:
         """Solves SB using Classical Standard paradigm (best, back_first, or front_first)."""
         if order in ("back_first", "front_first"):
             return self._solve_classical_order(
-                base_cube, block, sym, uninspected, ori_str,
+                base_cube, ori, sym, uninspected, ori_str,
                 placement, c_idx, e_idx, center_off, k, order, deadline
             )
         sols_back = self._solve_classical_order(
-            base_cube, block, sym, uninspected, ori_str,
+            base_cube, ori, sym, uninspected, ori_str,
             placement, c_idx, e_idx, center_off, k, "back_first", deadline
         )
         sols_front = self._solve_classical_order(
-            base_cube, block, sym, uninspected, ori_str,
+            base_cube, ori, sym, uninspected, ori_str,
             placement, c_idx, e_idx, center_off, k, "front_first", deadline
         )
         combined: List[SBSolution] = []
@@ -751,7 +751,7 @@ class SBSolver:
     def _solve_free(
         self,
         base_cube: CubeState,
-        block: RouxOrientation,
+        ori: RouxOrientation,
         sym: CanonicalSymmetry,
         uninspected: bool,
         ori_str: str,
@@ -770,7 +770,7 @@ class SBSolver:
             sol = self._build_solution(
                 base_cube=base_cube,
                 moves=(),
-                block=block,
+                ori=ori,
                 orientation=ori_str,
                 uninspected=uninspected,
                 sym=sym,
@@ -804,7 +804,7 @@ class SBSolver:
                 self._build_solution(
                     base_cube=base_cube,
                     moves=path_tuple,
-                    block=block,
+                    ori=ori,
                     orientation=ori_str,
                     uninspected=uninspected,
                     sym=sym,
@@ -819,7 +819,7 @@ class SBSolver:
     def _solve_all(
         self,
         base_cube: CubeState,
-        block: RouxOrientation,
+        ori: RouxOrientation,
         sym: CanonicalSymmetry,
         uninspected: bool,
         ori_str: str,
@@ -833,15 +833,15 @@ class SBSolver:
     ) -> List[SBSolution]:
         """Aggregates candidate solutions across all Second Block search paradigms."""
         sols_free = self._solve_free(
-            base_cube, block, sym, uninspected, ori_str,
+            base_cube, ori, sym, uninspected, ori_str,
             c_idx, e_idx, center_off, k, deadline
         )
         sols_sq = self._solve_square_pair(
-            base_cube, block, sym, uninspected, ori_str,
+            base_cube, ori, sym, uninspected, ori_str,
             placement, c_idx, e_idx, center_off, k, order, deadline
         )
         sols_cl = self._solve_classical(
-            base_cube, block, sym, uninspected, ori_str,
+            base_cube, ori, sym, uninspected, ori_str,
             placement, c_idx, e_idx, center_off, k, order, deadline
         )
 
@@ -969,7 +969,7 @@ class SBSolver:
         if style == "all":
             return self._solve_all(
                 base_cube=cube,
-                block=ori,
+                ori=ori,
                 sym=sym,
                 uninspected=uninspected,
                 ori_str=ori_str,
@@ -984,7 +984,7 @@ class SBSolver:
         elif style == "square_pair":
             return self._solve_square_pair(
                 base_cube=cube,
-                block=ori,
+                ori=ori,
                 sym=sym,
                 uninspected=uninspected,
                 ori_str=ori_str,
@@ -999,7 +999,7 @@ class SBSolver:
         elif style == "classical":
             return self._solve_classical(
                 base_cube=cube,
-                block=ori,
+                ori=ori,
                 sym=sym,
                 uninspected=uninspected,
                 ori_str=ori_str,
@@ -1014,7 +1014,7 @@ class SBSolver:
         else:
             return self._solve_free(
                 base_cube=cube,
-                block=ori,
+                ori=ori,
                 sym=sym,
                 uninspected=uninspected,
                 ori_str=ori_str,
