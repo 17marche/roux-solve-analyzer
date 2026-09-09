@@ -638,6 +638,8 @@ def _generate_all_orientations() -> Dict[str, RouxOrientation]:
 # Precomputed registries
 _ORIENTATIONS_BY_ROTATION: Dict[str, RouxOrientation] = _generate_all_orientations()
 
+CANONICAL_ORIENTATION: RouxOrientation = _ORIENTATIONS_BY_ROTATION[""]
+
 _DUAL_NEUTRAL_ROTATIONS = (
     "", "y", "y2", "y'",
     "x2", "x2 y", "x2 y2", "x2 y'"
@@ -739,6 +741,7 @@ __all__ = [
     "CanonicalSymmetry",
     "SBPlacement",
     "RouxOrientation",
+    "CANONICAL_ORIENTATION",
     "get_all_orientations",
     "get_dual_neutral_orientations",
     "get_orientation",

@@ -19,7 +19,7 @@ from .models import FBPhase, Orientation, ConcurrentSBProgress
 
 
 # Export BlockDefinition and ALL_BLOCK_DEFINITIONS as aliases to RouxOrientation
-# for backward compatibility with unmigrated solver imports.
+# for backward compatibility with historical callers and scripts.
 BlockDefinition = RouxOrientation
 ALL_BLOCK_DEFINITIONS: Dict[str, RouxOrientation] = {
     o.rotations: o for o in get_all_orientations()
@@ -30,6 +30,14 @@ DUAL_NEUTRAL_ORIENTATIONS: List[str] = [o.rotations for o in get_dual_neutral_or
 
 # 24 Full Color-Neutral Orientations
 FULL_COLOR_NEUTRAL_ORIENTATIONS: List[str] = [o.rotations for o in get_all_orientations()]
+
+__all__ = [
+    "BlockDefinition",
+    "ALL_BLOCK_DEFINITIONS",
+    "DUAL_NEUTRAL_ORIENTATIONS",
+    "FULL_COLOR_NEUTRAL_ORIENTATIONS",
+    "FBDetector",
+]
 
 
 class FBDetector:

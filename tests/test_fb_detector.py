@@ -103,3 +103,68 @@ def test_fb_detector_uses_roux_orientation():
     assert matched.rotations == ""
     assert matched.is_fb_solved(clean_cube)
 
+
+def test_historical_backward_compatibility_aliases():
+    """Verify historical import locations in segmenter tier provide aliases for legacy block spec and dict."""
+    import roux_engine.segmenter.fb_detector as seg_fb
+    from roux_engine.core.orientation import RouxOrientation
+
+    # 1. Block spec legacy alias
+    assert seg_fb.BlockDefinition is RouxOrientation
+
+    # 2. Block dictionary alias
+    assert hasattr(seg_fb, "ALL_BLOCK_DEFINITIONS")
+    assert len(seg_fb.ALL_BLOCK_DEFINITIONS) == 24
+    assert "" in seg_fb.ALL_BLOCK_DEFINITIONS
+    assert "x2" in seg_fb.ALL_BLOCK_DEFINITIONS
+
+    # 3. Verify all 39 piece and coordinate attributes on block objects in the dictionary
+    block = seg_fb.ALL_BLOCK_DEFINITIONS[""]
+    assert isinstance(block, RouxOrientation)
+    assert block.rotations == ""
+    assert hasattr(block, "left_color")
+    assert hasattr(block, "bottom_color")
+    assert hasattr(block, "front_color")
+    assert hasattr(block, "back_color")
+    assert hasattr(block, "right_color")
+    assert hasattr(block, "top_color")
+    assert hasattr(block, "dl_piece")
+    assert hasattr(block, "dl_eo")
+    assert hasattr(block, "fl_piece")
+    assert hasattr(block, "fl_eo")
+    assert hasattr(block, "bl_piece")
+    assert hasattr(block, "bl_eo")
+    assert hasattr(block, "dlf_piece")
+    assert hasattr(block, "dlf_co")
+    assert hasattr(block, "dbl_piece")
+    assert hasattr(block, "dbl_co")
+    assert hasattr(block, "dr_piece")
+    assert hasattr(block, "dr_eo")
+    assert hasattr(block, "fr_piece")
+    assert hasattr(block, "fr_eo")
+    assert hasattr(block, "br_piece")
+    assert hasattr(block, "br_eo")
+    assert hasattr(block, "dfr_piece")
+    assert hasattr(block, "dfr_co")
+    assert hasattr(block, "drb_piece")
+    assert hasattr(block, "drb_co")
+    assert hasattr(block, "dbr_piece")  # canonical CONTEXT.md alias
+    assert hasattr(block, "ul_piece")
+    assert hasattr(block, "ul_eo")
+    assert hasattr(block, "ur_piece")
+    assert hasattr(block, "ur_eo")
+    assert hasattr(block, "uf_piece")
+    assert hasattr(block, "uf_eo")
+    assert hasattr(block, "ub_piece")
+    assert hasattr(block, "ub_eo")
+    assert hasattr(block, "df_piece")
+    assert hasattr(block, "df_eo")
+    assert hasattr(block, "db_piece")
+    assert hasattr(block, "db_eo")
+
+    # 4. Orientation list aliases
+    assert hasattr(seg_fb, "DUAL_NEUTRAL_ORIENTATIONS")
+    assert hasattr(seg_fb, "FULL_COLOR_NEUTRAL_ORIENTATIONS")
+    assert len(seg_fb.DUAL_NEUTRAL_ORIENTATIONS) == 8
+    assert len(seg_fb.FULL_COLOR_NEUTRAL_ORIENTATIONS) == 24
+

@@ -72,6 +72,63 @@ class TestArchitecturalTierSeparation:
         ]
         assert detector_imports == [], f"Found forbidden detector imports in sb_solver.py: {detector_imports}"
 
+    def test_core_has_zero_solver_or_segmenter_imports(self):
+        """No module in core may import from solver or segmenter tiers."""
+        from pathlib import Path
+        core_dir = Path(__file__).parent.parent / "src" / "roux_engine" / "core"
+        for py_file in core_dir.glob("*.py"):
+            tree = ast.parse(py_file.read_text())
+            for node in ast.walk(tree):
+                if isinstance(node, ast.Import):
+                    for alias in node.names:
+                        assert "solver" not in alias.name and "segmenter" not in alias.name, (
+                            f"Forbidden import in {py_file.name}: {alias.name}"
+                        )
+                elif isinstance(node, ast.ImportFrom):
+                    mod = node.module or ""
+                    assert "solver" not in mod and "segmenter" not in mod, (
+                        f"Forbidden from-import in {py_file.name}: {mod}"
+                    )
+
+    def test_zero_circular_imports_across_tier_orderings(self):
+        """Zero circular imports exist regardless of module loading sequence."""
+        import subprocess
+        import sys
+        import itertools
+
+        orderings = list(itertools.permutations([
+            "roux_engine.core",
+            "roux_engine.solver",
+            "roux_engine.segmenter"
+        ]))
+
+        for order in orderings:
+            import_stmt = "; ".join(f"import {mod}" for mod in order)
+            code = f"{import_stmt}; print('OK')"
+            res = subprocess.run(
+                [sys.executable, "-c", code],
+                capture_output=True,
+                text=True,
+            )
+            assert res.returncode == 0, (
+                f"Import failed for order {order}: {res.stderr}"
+            )
+
+        # Test specific critical pairs: cube before orientation and orientation before cube
+        for pair in [
+            ("roux_engine.core.cube", "roux_engine.core.orientation"),
+            ("roux_engine.core.orientation", "roux_engine.core.cube"),
+        ]:
+            code = f"import {pair[0]}; import {pair[1]}; from roux_engine.core.cube import CubeState; c = CubeState(); assert c.is_fb_solved()"
+            res = subprocess.run(
+                [sys.executable, "-c", code],
+                capture_output=True,
+                text=True,
+            )
+            assert res.returncode == 0, (
+                f"Pair import failed for {pair}: {res.stderr}"
+            )
+
     def test_canonical_symmetry_identity(self):
         """CanonicalSymmetry in solver.symmetry must be the exact enum from core.orientation."""
         assert SolverCanonicalSymmetry is CoreCanonicalSymmetry

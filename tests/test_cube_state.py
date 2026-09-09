@@ -90,6 +90,34 @@ class TestRouxMoveMechanicsAndCommutators:
         assert cube.is_fb_solved()
         assert not cube.is_solved()
 
+    def test_is_fb_solved_delegation_to_canonical_orientation(self):
+        """Verifies that CubeState.is_fb_solved delegates directly to canonical RouxOrientation."""
+        from unittest.mock import patch
+        from roux_engine.core.orientation import RouxOrientation, get_orientation, CANONICAL_ORIENTATION
+
+        canonical = get_orientation("")
+        assert CANONICAL_ORIENTATION is canonical
+
+        cube = CubeState()
+        cube.apply_moves("R U R'")
+
+        with patch.object(RouxOrientation, "is_fb_solved", autospec=True, side_effect=RouxOrientation.is_fb_solved) as mock_is_fb:
+            result = cube.is_fb_solved(white_bottom=True)
+            assert result is True
+            mock_is_fb.assert_called_once_with(canonical, cube)
+
+        # Disturbed First Block
+        disturbed = CubeState()
+        disturbed.apply_moves("L")
+        with patch.object(RouxOrientation, "is_fb_solved", autospec=True, side_effect=RouxOrientation.is_fb_solved) as mock_is_fb:
+            assert disturbed.is_fb_solved(white_bottom=True) is False
+            mock_is_fb.assert_called_once_with(canonical, disturbed)
+
+        # Non-white bottom returns False without calling canonical FB check
+        with patch.object(RouxOrientation, "is_fb_solved", autospec=True) as mock_is_fb:
+            assert cube.is_fb_solved(white_bottom=False) is False
+            mock_is_fb.assert_not_called()
+
     def test_h_perm(self):
         cube = CubeState()
         cube.apply_moves("M2 U M2 U2 M2 U M2")

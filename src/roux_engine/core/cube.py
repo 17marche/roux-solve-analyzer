@@ -63,32 +63,12 @@ class CubeState:
     def is_fb_solved(self, white_bottom: bool = True) -> bool:
         """Checks if the canonical Left First Block (1x2x3 on L face) is solved.
         
-        Left FB consists of:
-        - 2 Corners: DFL (4 or 7 depending on orientation), DBL (5)
-        - 3 Edges: DL (5), FL (8), BL (9)
-        - L Center (4)
+        Delegates to the canonical RouxOrientation entity.
         """
-        # Canonical White-bottom, Green-front, Orange-left
-        # FB pieces: Corners DFL (DLF = 4), DBL (5)
-        #            Edges DL (5), FL (8), BL (9)
-        #            Center L (4)
-        if white_bottom:
-            if self.centers[Center.L] != Center.L:
-                return False
-            # Check corners DLF (4) and DBL (5)
-            if self.cp[Corner.DLF] != Corner.DLF or self.co[Corner.DLF] != 0:
-                return False
-            if self.cp[Corner.DBL] != Corner.DBL or self.co[Corner.DBL] != 0:
-                return False
-            # Check edges DL (5), FL (8), BL (9)
-            if self.ep[Edge.DL] != Edge.DL or self.eo[Edge.DL] != 0:
-                return False
-            if self.ep[Edge.FL] != Edge.FL or self.eo[Edge.FL] != 0:
-                return False
-            if self.ep[Edge.BL] != Edge.BL or self.eo[Edge.BL] != 0:
-                return False
-            return True
-        return False
+        if not white_bottom:
+            return False
+        from .orientation import CANONICAL_ORIENTATION
+        return CANONICAL_ORIENTATION.is_fb_solved(self)
 
     def to_bytes(self) -> bytes:
         """Serializes the state into a compact 42-byte binary representation."""
