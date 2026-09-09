@@ -7,11 +7,23 @@ Step 4b (UL/UR placement), Step 4c (M-slice & center permutation), and 1-look gl
 
 from __future__ import annotations
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Tuple, Sequence, Set
+from typing import Dict, List, Optional, Tuple, Sequence, Set, Union, Any
 import numpy as np
 
-from ..core.constants import Edge, Center, Corner
+from ..core.constants import Edge, Center, Corner, Color
 from ..core.cube import CubeState
+from ..core.orientation import (
+    RouxOrientation,
+    CanonicalSymmetry,
+    CANONICAL_ORIENTATION,
+    get_orientation,
+    get_all_orientations,
+    get_dual_neutral_orientations,
+    translate_moves_to_original,
+    _parse_move_sequence,
+)
+from ..core.moves import MOVES
+from ..core.parser import MoveParser
 from ._lse_4c_data import LSE_4C_SOLUTIONS
 
 
@@ -623,4 +635,208 @@ def solve_lse_paths(cube: CubeState) -> dict[str, LSEPath]:
     """
     graph = LSEGraph.get_instance()
     return graph.solve_paths(cube)
+
+
+def resolve_lse_orientation(
+    cube: CubeState,
+    orientation: Optional[Union[str, RouxOrientation, CanonicalSymmetry, Tuple[Color, Color], Any]] = None,
+) -> tuple[RouxOrientation, bool]:
+    """Resolves the solve orientation and frame type (inspected vs uninspected) for LSE solving.
+
+    Determines the solve orientation from solved First Block and Second Block cubies when
+    orientation is not explicitly provided. If orientation is explicitly provided, validates
+    and confirms whether the cube is in the inspected hand frame or uninspected world frame.
+
+    Args:
+        cube: The cube state to analyze.
+        orientation: Optional explicit orientation override (rotation string, color pair tuple,
+            CanonicalSymmetry, RouxOrientation, or any object accepted by get_orientation).
+
+    Returns:
+        tuple[RouxOrientation, bool]:
+            (resolved_orientation, is_inspected)
+            where is_inspected is True if the solve is in the inspected hand frame (blocks on Left/Right),
+            or False if in an uninspected world frame (omitted inspection rotations).
+
+    Raises:
+        ValueError: If an explicit orientation is provided but First Block or Second Block is not solved
+            for that orientation, or if the orientation identifier is invalid.
+    """
+    if orientation is not None:
+        ori = get_orientation(orientation)
+        # Check inspected frame first (FB on Left, SB on Right)
+        if ori.is_fb_solved(cube) and ori.is_sb_solved(cube):
+            return ori, True
+        # Check uninspected frame (blocks on other faces due to omitted inspection rotation)
+        if ori.rotations:
+            c_rot = cube.copy().apply_moves(ori.rotations)
+            if ori.is_fb_solved(c_rot) and ori.is_sb_solved(c_rot):
+                return ori, False
+        raise ValueError(
+            f"First Block and Second Block are not solved for specified orientation {ori.rotations!r} "
+            f"(bottom={ori.bottom_color.name}, left={ori.left_color.name})"
+        )
+
+    if cube.is_solved():
+        return CANONICAL_ORIENTATION, True
+
+    # Auto-detection:
+    # Build candidate list with dual-neutral orientations prioritized
+    dn_set = set(get_dual_neutral_orientations())
+    candidates = list(get_dual_neutral_orientations()) + [
+        o for o in get_all_orientations() if o not in dn_set
+    ]
+
+    # 1. Check inspected hand frames (blocks on Left and Right)
+    for candidate in candidates:
+        if candidate.is_fb_solved(cube) and candidate.is_sb_solved(cube):
+            return candidate, True
+
+    # 2. Check uninspected world frames (omitted inspection rotations)
+    for candidate in candidates:
+        if candidate.rotations:
+            c_rot = cube.copy().apply_moves(candidate.rotations)
+            if candidate.is_fb_solved(c_rot) and candidate.is_sb_solved(c_rot):
+                return candidate, False
+
+    # Undetermined: fallback to canonical
+    return CANONICAL_ORIENTATION, True
+
+
+def conjugate_lse_cube(
+    cube: CubeState,
+    orientation: Union[str, RouxOrientation, CanonicalSymmetry, Tuple[Color, Color], Any] = "",
+    is_inspected: bool = True,
+) -> CubeState:
+    """Conjugates a cube state into the canonical Yellow-bottom/Orange-left (standard Roux) frame.
+
+    Transforms the cube state so that LSE pieces and M-slice centers map to canonical slots
+    and expected orientations, making it directly queryable against the canonical LSE graph.
+
+    Args:
+        cube: The cube state to conjugate.
+        orientation: The solve orientation of the cube (default canonical "").
+        is_inspected: True if cube is in inspected hand frame (blocks on Left/Right),
+            False if in uninspected world frame (omitted inspection rotation).
+
+    Returns:
+        A new canonical CubeState ready for LSEGraph.encode_cube and solving.
+    """
+    ori = get_orientation(orientation)
+
+    # If in uninspected frame, re-map to inspected frame by applying inspection rotation
+    inspected_cube: CubeState
+    if not is_inspected:
+        inspected_cube = cube.copy()
+        if ori.rotations:
+            inspected_cube.apply_moves(ori.rotations)
+    else:
+        inspected_cube = cube
+
+    canon = CubeState()
+
+    # 1. Map M-slice centers (U, D, F, B)
+    # Canonical: top -> 0 (White), bottom -> 1 (Yellow), front -> 2 (Green), back -> 3 (Blue)
+    color_map = {
+        ori.top_color.value: 0,
+        ori.bottom_color.value: 1,
+        ori.front_color.value: 2,
+        ori.back_color.value: 3,
+    }
+    for c_idx in (Center.U, Center.D, Center.F, Center.B):
+        orig_val = int(inspected_cube.centers[c_idx])
+        if orig_val in color_map:
+            canon.centers[c_idx] = color_map[orig_val]
+
+    # 2. Preserve U-layer corner AUF
+    reference_oriented_cube = CubeState()
+    if ori.rotations:
+        reference_oriented_cube.apply_moves(ori.rotations)
+    expected_u_corners = [int(reference_oriented_cube.cp[i]) for i in range(4)]
+
+    current_ufl_corner = int(inspected_cube.cp[0])
+    if current_ufl_corner in expected_u_corners:
+        idx = expected_u_corners.index(current_ufl_corner)
+        if idx == 3:
+            canon.apply_move("U")
+        elif idx == 2:
+            canon.apply_move("U2")
+        elif idx == 1:
+            canon.apply_move("U'")
+
+    # 3. Map the 6 LSE pieces and orientation deltas
+    piece_map = {
+        ori.uf_piece: (0, ori.uf_eo),
+        ori.ul_piece: (1, ori.ul_eo),
+        ori.ub_piece: (2, ori.ub_eo),
+        ori.ur_piece: (3, ori.ur_eo),
+        ori.df_piece: (4, ori.df_eo),
+        ori.db_piece: (6, ori.db_eo),
+    }
+    for slot in (Edge.UF, Edge.UL, Edge.UB, Edge.UR, Edge.DF, Edge.DB):
+        p = int(inspected_cube.ep[slot])
+        if p in piece_map:
+            canon_p, base_eo = piece_map[p]
+            canon.ep[slot] = canon_p
+            canon.eo[slot] = (int(inspected_cube.eo[slot]) - base_eo) % 2
+
+    return canon
+
+
+def translate_lse_moves(
+    moves: Union[str, Sequence[str]],
+    orientation: Union[str, RouxOrientation, CanonicalSymmetry, Tuple[Color, Color], Any] = "",
+    is_inspected: bool = True,
+) -> list[str]:
+    """Translates move sequences generated in the canonical <M, U> frame back to the user's execution frame.
+
+    Args:
+        moves: Move sequence string or sequence of move strings.
+        orientation: The solve orientation.
+        is_inspected: True if the cube was in the inspected hand frame (blocks on Left/Right),
+            False if in an uninspected world frame (omitted inspection rotation).
+
+    Returns:
+        List of move strings executable in the caller's frame.
+    """
+    parsed = _parse_move_sequence(moves)
+    if is_inspected:
+        return parsed
+
+    ori = get_orientation(orientation)
+    if not ori.rotations:
+        return parsed
+
+    if ori.symmetry is not None:
+        return translate_moves_to_original(parsed, ori.symmetry)
+
+    # General whole-cube rotation conjugation for FCN: m_orig = g * m_canon * g^-1
+    inverse_rotations = " ".join(MoveParser.invert_moves(ori.rotations))
+    translated: list[str] = []
+    for m in parsed:
+        c_target = CubeState().apply_moves(f"{ori.rotations} {m} {inverse_rotations}")
+        matched: Optional[str] = None
+        for cand in MOVES.keys():
+            if CubeState().apply_move(cand) == c_target:
+                matched = cand
+                break
+        translated.append(matched if matched is not None else m)
+    return translated
+
+
+__all__ = [
+    "LSEGraph",
+    "LSESolution",
+    "LSEPath",
+    "solve_lse",
+    "solve_lse_paths",
+    "resolve_lse_orientation",
+    "conjugate_lse_cube",
+    "translate_lse_moves",
+    "cancel_moves",
+]
+
+
+
+
 

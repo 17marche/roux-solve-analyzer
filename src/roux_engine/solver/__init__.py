@@ -41,7 +41,16 @@ from .symmetry import (
     is_fb_solved_for_symmetry,
 )
 
-from .lse_solver import LSEGraph, LSESolution, LSEPath, solve_lse, solve_lse_paths
+from .lse_solver import (
+    LSEGraph,
+    LSESolution,
+    LSEPath,
+    solve_lse,
+    solve_lse_paths,
+    resolve_lse_orientation,
+    conjugate_lse_cube,
+    translate_lse_moves,
+)
 from .fb_solver import FBSolution, FBSolver, solve_fb
 from .sb_solver import SBSolution, SBSolver, solve_sb, is_center_aligned_sb_solved
 from . import ida_star
@@ -87,6 +96,9 @@ __all__ = [
     "LSEPath",
     "solve_lse",
     "solve_lse_paths",
+    "resolve_lse_orientation",
+    "conjugate_lse_cube",
+    "translate_lse_moves",
     "FBSolution",
     "FBSolver",
     "solve_fb",
