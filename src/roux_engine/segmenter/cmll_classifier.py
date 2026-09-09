@@ -1,14 +1,16 @@
 """CMLL Classifier for 42 Cases, AUF isolation, and execution tracking."""
 
 from __future__ import annotations
-from typing import List, Optional, Tuple, Sequence, Dict, Set
+from typing import List, Optional, Tuple, Sequence, Dict, Set, Union, Any
 import numpy as np
 
 from ..core.constants import Corner
 from ..core.cube import CubeState
 from ..core.parser import MoveEvent, MoveParser
+from ..core.orientation import RouxOrientation, get_orientation, get_all_orientations
 from .models import CMLLPhase
 from .fb_detector import BlockDefinition, ALL_BLOCK_DEFINITIONS, FULL_COLOR_NEUTRAL_ORIENTATIONS
+
 
 
 CMLL_ALGS: List[Tuple[str, str, str]] = [
@@ -67,7 +69,8 @@ def _precompute_solved_corner_perms() -> Tuple[Dict[str, Set[Tuple[int, ...]]], 
     valid_perms: Dict[str, Set[Tuple[int, ...]]] = {}
     expected_co: Dict[str, Tuple[int, ...]] = {}
 
-    for ori_name in FULL_COLOR_NEUTRAL_ORIENTATIONS:
+    for ori in get_all_orientations():
+        ori_name = ori.rotations
         perms = set()
         for auf in ("", "U", "U2", "U'"):
             c = CubeState()
@@ -99,7 +102,8 @@ class CMLLClassifier:
         table: Dict[Tuple[str, Tuple[int, ...], Tuple[int, ...]], Tuple[str, str, str]] = {}
         auf_moves = [("", ""), ("U", "U'"), ("U2", "U2"), ("U'", "U")]
 
-        for ori_name in FULL_COLOR_NEUTRAL_ORIENTATIONS:
+        for ori in get_all_orientations():
+            ori_name = ori.rotations
             for case_id, group, alg in CMLL_ALGS:
                 if not alg:
                     # Solved case
@@ -145,11 +149,12 @@ class CMLLClassifier:
         return cls._TABLE
 
     @staticmethod
-    def are_corners_solved(state: CubeState, block: BlockDefinition = ALL_BLOCK_DEFINITIONS[""]) -> bool:
+    def are_corners_solved(state: CubeState, block: Union[RouxOrientation, str, Any] = ALL_BLOCK_DEFINITIONS[""]) -> bool:
         """Checks if all 4 U corners are oriented and permuted correctly relative to each other (up to AUF)."""
-        ori = block.rotations
-        valid_perms = VALID_SOLVED_CORNER_PERMS.get(ori, VALID_SOLVED_CORNER_PERMS[""])
-        expected_co = EXPECTED_SOLVED_CO.get(ori, (0, 0, 0, 0))
+        ori = get_orientation(block)
+        rotations = ori.rotations
+        valid_perms = VALID_SOLVED_CORNER_PERMS.get(rotations, VALID_SOLVED_CORNER_PERMS[""])
+        expected_co = EXPECTED_SOLVED_CO.get(rotations, (0, 0, 0, 0))
 
         co_tuple = tuple(int(x) for x in state.co[0:4])
         cp_tuple = tuple(int(x) for x in state.cp[0:4])
@@ -160,7 +165,7 @@ class CMLLClassifier:
     def classify_state(
         cls,
         state: CubeState,
-        block: BlockDefinition = ALL_BLOCK_DEFINITIONS[""]
+        block: Union[RouxOrientation, str, Any] = ALL_BLOCK_DEFINITIONS[""]
     ) -> Tuple[str, str, str]:
         """Classifies the CMLL case from the current state and orientation basis.
         
@@ -168,16 +173,17 @@ class CMLLClassifier:
             Tuple of (case_id, group, pre_auf)
         """
         table = cls.get_table()
-        ori = block.rotations
+        ori = get_orientation(block)
+        rotations = ori.rotations
 
         co_key = tuple(int(x) for x in state.co[0:4])
         cp_key = tuple(int(x) for x in state.cp[0:4])
         
-        key = (ori, co_key, cp_key)
+        key = (rotations, co_key, cp_key)
         if key in table:
             return table[key]
 
-        if cls.are_corners_solved(state, block):
+        if cls.are_corners_solved(state, ori):
             return ("solved", "Skip", "")
 
         return ("unknown", "Unknown", "")
@@ -222,17 +228,18 @@ class CMLLClassifier:
         sb_state: CubeState,
         events: Sequence[MoveEvent],
         sb_end_idx: int,
-        block: BlockDefinition = ALL_BLOCK_DEFINITIONS[""]
+        block: Union[RouxOrientation, str, Any] = ALL_BLOCK_DEFINITIONS[""]
     ) -> Optional[Tuple[CMLLPhase, CubeState]]:
         """Segments CMLL execution starting directly from sb_state at sb_end_idx until corners are solved.
         
         Returns:
             Tuple of (CMLLPhase, cube_state_at_cmll_end) or None.
         """
+        ori = get_orientation(block)
         sim = sb_state.copy()
 
         # Check if CMLL was already solved entering the phase
-        if cls.are_corners_solved(sim, block):
+        if cls.are_corners_solved(sim, ori):
             time_ms = events[sb_end_idx].timestamp_ms if sb_end_idx >= 0 and sb_end_idx < len(events) and events[sb_end_idx].timestamp_ms is not None else None
             phase = CMLLPhase(
                 start_move_idx=sb_end_idx + 1,
@@ -248,13 +255,13 @@ class CMLLClassifier:
             return phase, sim.copy()
 
         # Identify CMLL case before execution
-        case_id, group, expected_pre_auf = cls.classify_state(sim, block)
+        case_id, group, expected_pre_auf = cls.classify_state(sim, ori)
 
         for i in range(sb_end_idx + 1, len(events)):
             ev = events[i]
             sim.apply_move(ev.move)
 
-            if cls.are_corners_solved(sim, block):
+            if cls.are_corners_solved(sim, ori):
                 cmll_events = events[sb_end_idx + 1:i + 1]
                 moves_stm = len([e for e in cmll_events if not e.move.startswith(('x', 'y', 'z'))])
                 time_ms = cmll_events[-1].timestamp_ms if cmll_events and cmll_events[-1].timestamp_ms is not None else None

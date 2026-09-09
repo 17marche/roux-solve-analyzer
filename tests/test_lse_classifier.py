@@ -177,3 +177,28 @@ def test_lse_already_solved_skip():
     assert phase.step_4a.move_count_stm == 0
     assert phase.step_4c.move_count_stm == 0
     assert phase.step_4c.case == "solved"
+
+
+def test_lse_classifier_delegates_to_roux_orientation():
+    """Verify LSEClassifier methods accept RouxOrientation and string identifiers, delegating to core methods."""
+    from roux_engine.core.orientation import get_orientation, get_all_orientations
+
+    for ori in get_all_orientations():
+        cube = CubeState()
+        if ori.rotations:
+            cube.apply_moves(ori.rotations)
+
+        # Accepts RouxOrientation instance
+        assert LSEClassifier.is_center_axis_aligned(cube, ori)
+        assert LSEClassifier.is_eo_solved(cube, ori)
+        assert LSEClassifier.count_bad_edges(cube, ori) == 0
+        assert LSEClassifier.is_ul_ur_solved(cube, ori)
+        assert LSEClassifier.classify_4a_variant(cube, ori) == "eolr_b"
+
+        # Accepts string rotation identifier directly
+        assert LSEClassifier.is_center_axis_aligned(cube, ori.rotations)
+        assert LSEClassifier.is_eo_solved(cube, ori.rotations)
+        assert LSEClassifier.count_bad_edges(cube, ori.rotations) == 0
+        assert LSEClassifier.is_ul_ur_solved(cube, ori.rotations)
+        assert LSEClassifier.classify_4a_variant(cube, ori.rotations) == "eolr_b"
+

@@ -147,3 +147,26 @@ def test_sb_already_fully_solved_at_fb_end():
     assert phase.pair1_type == "both_simultaneous"
     assert phase.moves_str == ""
     assert SBDetector.is_canonical_sb_solved(final_state)
+
+
+def test_sb_detector_delegates_to_roux_orientation():
+    """Verify SBDetector methods delegate to RouxOrientation across orientations and accept string identifiers."""
+    from roux_engine.core.orientation import get_orientation, get_all_orientations
+
+    # 1. Test across all 24 orientations with RouxOrientation instances
+    for ori in get_all_orientations():
+        cube = CubeState()
+        if ori.rotations:
+            cube.apply_moves(ori.rotations)
+
+        assert SBDetector.is_dr_solved(cube, ori)
+        assert SBDetector.is_back_pair_solved(cube, ori)
+        assert SBDetector.is_front_pair_solved(cube, ori)
+        assert SBDetector.is_right_1x2x3_block_solved(cube, ori)
+
+        # Also accepts rotation string identifier directly
+        assert SBDetector.is_dr_solved(cube, ori.rotations)
+        assert SBDetector.is_back_pair_solved(cube, ori.rotations)
+        assert SBDetector.is_front_pair_solved(cube, ori.rotations)
+        assert SBDetector.is_right_1x2x3_block_solved(cube, ori.rotations)
+

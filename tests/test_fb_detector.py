@@ -89,3 +89,17 @@ def test_fb_solved_at_inspection_off_by_one():
     fb_phase = res[0]
     assert fb_phase.end_move_idx == -1
     assert fb_phase.move_count_stm == 0
+
+
+def test_fb_detector_uses_roux_orientation():
+    """Verify FB detector exports BlockDefinition as RouxOrientation and returns RouxOrientation."""
+    from roux_engine.core.orientation import RouxOrientation
+    from roux_engine.segmenter.fb_detector import BlockDefinition
+
+    assert BlockDefinition is RouxOrientation
+    clean_cube = CubeState()
+    matched = FBDetector.match_fb_block(clean_cube)
+    assert isinstance(matched, RouxOrientation)
+    assert matched.rotations == ""
+    assert matched.is_fb_solved(clean_cube)
+

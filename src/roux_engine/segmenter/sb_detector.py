@@ -1,12 +1,13 @@
 """Second Block (SB) Detector for Roux method."""
 
 from __future__ import annotations
-from typing import List, Optional, Tuple, Sequence
+from typing import List, Optional, Tuple, Sequence, Union, Any
 import numpy as np
 
 from ..core.constants import Corner, Edge, Center
 from ..core.cube import CubeState
 from ..core.parser import MoveEvent, MoveParser
+from ..core.orientation import RouxOrientation, get_orientation
 from .models import SBPhase
 from .fb_detector import BlockDefinition, ALL_BLOCK_DEFINITIONS
 
@@ -20,45 +21,27 @@ class SBDetector:
     @staticmethod
     def is_canonical_sb_solved(state: CubeState) -> bool:
         """Checks if the canonical Right Second Block (DR, FR, BR, DFR, DRB) is solved."""
-        return (
-            state.ep[Edge.DR] == Edge.DR and state.eo[Edge.DR] == 0 and
-            state.ep[Edge.FR] == Edge.FR and state.eo[Edge.FR] == 0 and
-            state.ep[Edge.BR] == Edge.BR and state.eo[Edge.BR] == 0 and
-            state.cp[Corner.DFR] == Corner.DFR and state.co[Corner.DFR] == 0 and
-            state.cp[Corner.DRB] == Corner.DRB and state.co[Corner.DRB] == 0
-        )
+        return get_orientation("").is_sb_solved(state)
 
     @staticmethod
-    def is_dr_solved(state: CubeState, block: BlockDefinition = ALL_BLOCK_DEFINITIONS[""]) -> bool:
+    def is_dr_solved(state: CubeState, block: Union[RouxOrientation, str, Any] = ALL_BLOCK_DEFINITIONS[""]) -> bool:
         """Checks if DR edge is solved in its designated slot with exact piece ID and orientation."""
-        return state.ep[Edge.DR] == block.dr_piece and state.eo[Edge.DR] == block.dr_eo
+        return get_orientation(block).is_dr_solved(state)
 
     @staticmethod
-    def is_back_pair_solved(state: CubeState, block: BlockDefinition = ALL_BLOCK_DEFINITIONS[""]) -> bool:
+    def is_back_pair_solved(state: CubeState, block: Union[RouxOrientation, str, Any] = ALL_BLOCK_DEFINITIONS[""]) -> bool:
         """Checks if Right back pair (BR edge + DRB corner) is solved with exact piece IDs and orientations."""
-        return (
-            state.ep[Edge.BR] == block.br_piece and state.eo[Edge.BR] == block.br_eo and
-            state.cp[Corner.DRB] == block.drb_piece and state.co[Corner.DRB] == block.drb_co
-        )
+        return get_orientation(block).is_back_pair_solved(state)
 
     @staticmethod
-    def is_front_pair_solved(state: CubeState, block: BlockDefinition = ALL_BLOCK_DEFINITIONS[""]) -> bool:
+    def is_front_pair_solved(state: CubeState, block: Union[RouxOrientation, str, Any] = ALL_BLOCK_DEFINITIONS[""]) -> bool:
         """Checks if Right front pair (FR edge + DFR corner) is solved with exact piece IDs and orientations."""
-        return (
-            state.ep[Edge.FR] == block.fr_piece and state.eo[Edge.FR] == block.fr_eo and
-            state.cp[Corner.DFR] == block.dfr_piece and state.co[Corner.DFR] == block.dfr_co
-        )
+        return get_orientation(block).is_front_pair_solved(state)
 
     @staticmethod
-    def is_right_1x2x3_block_solved(state: CubeState, block: BlockDefinition = ALL_BLOCK_DEFINITIONS[""]) -> bool:
+    def is_right_1x2x3_block_solved(state: CubeState, block: Union[RouxOrientation, str, Any] = ALL_BLOCK_DEFINITIONS[""]) -> bool:
         """Checks if all 5 Right Block pieces are simultaneously solved with exact piece IDs and orientations."""
-        return (
-            state.ep[Edge.DR] == block.dr_piece and state.eo[Edge.DR] == block.dr_eo and
-            state.ep[Edge.BR] == block.br_piece and state.eo[Edge.BR] == block.br_eo and
-            state.ep[Edge.FR] == block.fr_piece and state.eo[Edge.FR] == block.fr_eo and
-            state.cp[Corner.DRB] == block.drb_piece and state.co[Corner.DRB] == block.drb_co and
-            state.cp[Corner.DFR] == block.dfr_piece and state.co[Corner.DFR] == block.dfr_co
-        )
+        return get_orientation(block).is_sb_solved(state)
 
     @classmethod
     def detect_sb(
@@ -66,13 +49,14 @@ class SBDetector:
         fb_state: CubeState,
         events: Sequence[MoveEvent],
         fb_end_idx: int,
-        block: BlockDefinition = ALL_BLOCK_DEFINITIONS[""]
+        block: Union[RouxOrientation, str, Any] = ALL_BLOCK_DEFINITIONS[""]
     ) -> Optional[Tuple[SBPhase, CubeState]]:
         """Tracks the solve starting directly from fb_state at fb_end_idx until SB is completed.
         
         Returns:
             Tuple of (SBPhase, cube_state_at_sb) or None.
         """
+        ori = get_orientation(block)
         dr_placement_idx: Optional[int] = None
         sb_square_idx: Optional[int] = None
         pair1_idx: Optional[int] = None
@@ -85,11 +69,11 @@ class SBDetector:
         sim = fb_state.copy()
 
         # Concurrent progress inspection at fb_end_idx before executing SB turns
-        if cls.is_dr_solved(sim, block):
+        if ori.is_dr_solved(sim):
             dr_placement_idx = fb_end_idx
 
-        back_solved_init = cls.is_back_pair_solved(sim, block)
-        front_solved_init = cls.is_front_pair_solved(sim, block)
+        back_solved_init = ori.is_back_pair_solved(sim)
+        front_solved_init = ori.is_front_pair_solved(sim)
 
         if dr_placement_idx is not None:
             if back_solved_init and not front_solved_init:
@@ -106,7 +90,7 @@ class SBDetector:
                 sb_square_idx = fb_end_idx
 
         # Check if SB was already completely solved at FB end
-        if cls.is_right_1x2x3_block_solved(sim, block):
+        if ori.is_sb_solved(sim):
             pair2_idx = fb_end_idx
             if pair1_idx is None:
                 pair1_idx = fb_end_idx
@@ -141,12 +125,12 @@ class SBDetector:
                 if not any(move_token.startswith(p) for p in ROUX_SB_ERGONOMIC_PREFIXES):
                     non_ergonomic_moves.append(move_token)
 
-            if dr_placement_idx is None and cls.is_dr_solved(sim, block):
+            if dr_placement_idx is None and ori.is_dr_solved(sim):
                 dr_placement_idx = i
 
-            back_solved = cls.is_back_pair_solved(sim, block)
-            front_solved = cls.is_front_pair_solved(sim, block)
-            dr_solved = cls.is_dr_solved(sim, block)
+            back_solved = ori.is_back_pair_solved(sim)
+            front_solved = ori.is_front_pair_solved(sim)
+            dr_solved = ori.is_dr_solved(sim)
 
             # Pair 1 & SB Square detection (coupled with DR)
             if pair1_idx is None and dr_solved:
@@ -164,7 +148,7 @@ class SBDetector:
                     sb_square_idx = i
 
             # Full Right Block SB Completion
-            if cls.is_right_1x2x3_block_solved(sim, block):
+            if ori.is_sb_solved(sim):
                 pair2_idx = i
                 if pair1_idx is None:
                     pair1_idx = i

@@ -124,3 +124,25 @@ def test_cmll_are_corners_solved_rejection():
     swapped.cp[0] = 1
     swapped.cp[1] = 0
     assert not CMLLClassifier.are_corners_solved(swapped)
+
+
+def test_cmll_classifier_resolves_orientation_registry():
+    """Verify CMLLClassifier resolves orientation frames via core.orientation registry across identifiers."""
+    from roux_engine.core.orientation import get_orientation, CanonicalSymmetry
+
+    for sym in CanonicalSymmetry:
+        ori = get_orientation(sym)
+        cube = CubeState()
+        if ori.rotations:
+            cube.apply_moves(ori.rotations)
+
+        # 1. are_corners_solved accepts CanonicalSymmetry, string, and RouxOrientation
+        assert CMLLClassifier.are_corners_solved(cube, block=ori)
+        assert CMLLClassifier.are_corners_solved(cube, block=sym)
+        assert CMLLClassifier.are_corners_solved(cube, block=ori.rotations)
+
+        # 2. classify_state accepts CanonicalSymmetry, string, and RouxOrientation
+        case_id, group, _ = CMLLClassifier.classify_state(cube, block=sym)
+        assert case_id == "solved"
+        assert group == "Skip"
+
