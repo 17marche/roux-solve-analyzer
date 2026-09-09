@@ -6,59 +6,18 @@ against a single canonical First Block pattern database.
 """
 
 from __future__ import annotations
-from enum import Enum
 from typing import Union, Tuple, Sequence, List, Dict, Optional
 
 from ..core.constants import Color, Edge, Corner, Center
 from ..core.cube import CubeState
-from ..core.parser import MoveParser
-from ..segmenter.fb_detector import ALL_BLOCK_DEFINITIONS, BlockDefinition
+from ..core.orientation import (
+    CanonicalSymmetry,
+    get_orientation,
+    translate_moves,
+    translate_moves_to_original,
+    translate_moves_to_canonical,
+)
 from .fb_indexer import FBIndexer, FBPlacement
-
-
-class CanonicalSymmetry(Enum):
-    """The 8 automorphisms of the x2y subgroup G."""
-    I = ""
-    Y = "y"
-    Y2 = "y2"
-    Y_PRIME = "y'"
-    X2 = "x2"
-    X2_Y = "x2 y"
-    X2_Y2 = "x2 y2"
-    X2_Y_PRIME = "x2 y'"
-
-    @property
-    def inspection_rotation(self) -> str:
-        """The cube rotation string to inspect/orient the cube in this symmetry frame."""
-        return self.value
-
-    @property
-    def bottom_color(self) -> Color:
-        """Bottom face color for this dual-neutral First Block orientation."""
-        return ALL_BLOCK_DEFINITIONS[self.value].bottom_color
-
-    @property
-    def left_color(self) -> Color:
-        """Left face color for this dual-neutral First Block orientation."""
-        return ALL_BLOCK_DEFINITIONS[self.value].left_color
-
-    @property
-    def inverse(self) -> CanonicalSymmetry:
-        """The group-theoretic inverse symmetry g^-1 satisfying g * g^-1 = I."""
-        return _INVERSE_MAP[self]
-
-
-# Group inverses in G
-_INVERSE_MAP: Dict[CanonicalSymmetry, CanonicalSymmetry] = {
-    CanonicalSymmetry.I: CanonicalSymmetry.I,
-    CanonicalSymmetry.Y: CanonicalSymmetry.Y_PRIME,
-    CanonicalSymmetry.Y2: CanonicalSymmetry.Y2,
-    CanonicalSymmetry.Y_PRIME: CanonicalSymmetry.Y,
-    CanonicalSymmetry.X2: CanonicalSymmetry.X2,
-    CanonicalSymmetry.X2_Y: CanonicalSymmetry.X2_Y,
-    CanonicalSymmetry.X2_Y2: CanonicalSymmetry.X2_Y2,
-    CanonicalSymmetry.X2_Y_PRIME: CanonicalSymmetry.X2_Y_PRIME,
-}
 
 # Precomputed lookup maps
 _STRING_TO_SYMMETRY: Dict[str, CanonicalSymmetry] = {
@@ -142,242 +101,6 @@ def get_symmetry(identifier: Union[str, CanonicalSymmetry, Tuple[Color, Color]])
 
 
 # -----------------------------------------------------------------------------
-# Move Translation Tables (Static Automorphisms)
-# -----------------------------------------------------------------------------
-
-# Inverse automorphism: canonical -> original: m_orig = g * m_canon * g^-1
-_CANON_TO_ORIG_MOVE: Dict[str, Dict[str, str]] = {
-    "": {
-        "B": "B", "B'": "B'", "B2": "B2",
-        "D": "D", "D'": "D'", "D2": "D2",
-        "E": "E", "E'": "E'", "E2": "E2",
-        "F": "F", "F'": "F'", "F2": "F2",
-        "L": "L", "L'": "L'", "L2": "L2",
-        "M": "M", "M'": "M'", "M2": "M2",
-        "R": "R", "R'": "R'", "R2": "R2",
-        "S": "S", "S'": "S'", "S2": "S2",
-        "U": "U", "U'": "U'", "U2": "U2",
-        "b": "b", "b'": "b'", "b2": "b2",
-        "d": "d", "d'": "d'", "d2": "d2",
-        "f": "f", "f'": "f'", "f2": "f2",
-        "l": "l", "l'": "l'", "l2": "l2",
-        "r": "r", "r'": "r'", "r2": "r2",
-        "u": "u", "u'": "u'", "u2": "u2",
-        "x": "x", "x'": "x'", "x2": "x2",
-        "y": "y", "y'": "y'", "y2": "y2",
-        "z": "z", "z'": "z'", "z2": "z2",
-    },
-    "y": {
-        "B": "L", "B'": "L'", "B2": "L2",
-        "D": "D", "D'": "D'", "D2": "D2",
-        "E": "E", "E'": "E'", "E2": "E2",
-        "F": "R", "F'": "R'", "F2": "R2",
-        "L": "F", "L'": "F'", "L2": "F2",
-        "M": "S", "M'": "S'", "M2": "S2",
-        "R": "B", "R'": "B'", "R2": "B2",
-        "S": "M'", "S'": "M", "S2": "M2",
-        "U": "U", "U'": "U'", "U2": "U2",
-        "b": "l", "b'": "l'", "b2": "l2",
-        "d": "d", "d'": "d'", "d2": "d2",
-        "f": "r", "f'": "r'", "f2": "r2",
-        "l": "f", "l'": "f'", "l2": "f2",
-        "r": "b", "r'": "b'", "r2": "b2",
-        "u": "u", "u'": "u'", "u2": "u2",
-        "x": "z'", "x'": "z", "x2": "z2",
-        "y": "y", "y'": "y'", "y2": "y2",
-        "z": "x", "z'": "x'", "z2": "x2",
-    },
-    "y2": {
-        "B": "F", "B'": "F'", "B2": "F2",
-        "D": "D", "D'": "D'", "D2": "D2",
-        "E": "E", "E'": "E'", "E2": "E2",
-        "F": "B", "F'": "B'", "F2": "B2",
-        "L": "R", "L'": "R'", "L2": "R2",
-        "M": "M'", "M'": "M", "M2": "M2",
-        "R": "L", "R'": "L'", "R2": "L2",
-        "S": "S'", "S'": "S", "S2": "S2",
-        "U": "U", "U'": "U'", "U2": "U2",
-        "b": "f", "b'": "f'", "b2": "f2",
-        "d": "d", "d'": "d'", "d2": "d2",
-        "f": "b", "f'": "b'", "f2": "b2",
-        "l": "r", "l'": "r'", "l2": "r2",
-        "r": "l", "r'": "l'", "r2": "l2",
-        "u": "u", "u'": "u'", "u2": "u2",
-        "x": "x'", "x'": "x", "x2": "x2",
-        "y": "y", "y'": "y'", "y2": "y2",
-        "z": "z'", "z'": "z", "z2": "z2",
-    },
-    "y'": {
-        "B": "R", "B'": "R'", "B2": "R2",
-        "D": "D", "D'": "D'", "D2": "D2",
-        "E": "E", "E'": "E'", "E2": "E2",
-        "F": "L", "F'": "L'", "F2": "L2",
-        "L": "B", "L'": "B'", "L2": "B2",
-        "M": "S'", "M'": "S", "M2": "S2",
-        "R": "F", "R'": "F'", "R2": "F2",
-        "S": "M", "S'": "M'", "S2": "M2",
-        "U": "U", "U'": "U'", "U2": "U2",
-        "b": "r", "b'": "r'", "b2": "r2",
-        "d": "d", "d'": "d'", "d2": "d2",
-        "f": "l", "f'": "l'", "f2": "l2",
-        "l": "b", "l'": "b'", "l2": "b2",
-        "r": "f", "r'": "f'", "r2": "f2",
-        "u": "u", "u'": "u'", "u2": "u2",
-        "x": "z", "x'": "z'", "x2": "z2",
-        "y": "y", "y'": "y'", "y2": "y2",
-        "z": "x'", "z'": "x", "z2": "x2",
-    },
-    "x2": {
-        "B": "F", "B'": "F'", "B2": "F2",
-        "D": "U", "D'": "U'", "D2": "U2",
-        "E": "E'", "E'": "E", "E2": "E2",
-        "F": "B", "F'": "B'", "F2": "B2",
-        "L": "L", "L'": "L'", "L2": "L2",
-        "M": "M", "M'": "M'", "M2": "M2",
-        "R": "R", "R'": "R'", "R2": "R2",
-        "S": "S'", "S'": "S", "S2": "S2",
-        "U": "D", "U'": "D'", "U2": "D2",
-        "b": "f", "b'": "f'", "b2": "f2",
-        "d": "u", "d'": "u'", "d2": "u2",
-        "f": "b", "f'": "b'", "f2": "b2",
-        "l": "l", "l'": "l'", "l2": "l2",
-        "r": "r", "r'": "r'", "r2": "r2",
-        "u": "d", "u'": "d'", "u2": "d2",
-        "x": "x", "x'": "x'", "x2": "x2",
-        "y": "y'", "y'": "y", "y2": "y2",
-        "z": "z'", "z'": "z", "z2": "z2",
-    },
-    "x2 y": {
-        "B": "L", "B'": "L'", "B2": "L2",
-        "D": "U", "D'": "U'", "D2": "U2",
-        "E": "E'", "E'": "E", "E2": "E2",
-        "F": "R", "F'": "R'", "F2": "R2",
-        "L": "B", "L'": "B'", "L2": "B2",
-        "M": "S'", "M'": "S", "M2": "S2",
-        "R": "F", "R'": "F'", "R2": "F2",
-        "S": "M'", "S'": "M", "S2": "M2",
-        "U": "D", "U'": "D'", "U2": "D2",
-        "b": "l", "b'": "l'", "b2": "l2",
-        "d": "u", "d'": "u'", "d2": "u2",
-        "f": "r", "f'": "r'", "f2": "r2",
-        "l": "b", "l'": "b'", "l2": "b2",
-        "r": "f", "r'": "f'", "r2": "f2",
-        "u": "d", "u'": "d'", "u2": "d2",
-        "x": "z", "x'": "z'", "x2": "z2",
-        "y": "y'", "y'": "y", "y2": "y2",
-        "z": "x", "z'": "x'", "z2": "x2",
-    },
-    "x2 y2": {
-        "B": "B", "B'": "B'", "B2": "B2",
-        "D": "U", "D'": "U'", "D2": "U2",
-        "E": "E'", "E'": "E", "E2": "E2",
-        "F": "F", "F'": "F'", "F2": "F2",
-        "L": "R", "L'": "R'", "L2": "R2",
-        "M": "M'", "M'": "M", "M2": "M2",
-        "R": "L", "R'": "L'", "R2": "L2",
-        "S": "S", "S'": "S'", "S2": "S2",
-        "U": "D", "U'": "D'", "U2": "D2",
-        "b": "b", "b'": "b'", "b2": "b2",
-        "d": "u", "d'": "u'", "d2": "u2",
-        "f": "f", "f'": "f'", "f2": "f2",
-        "l": "r", "l'": "r'", "l2": "r2",
-        "r": "l", "r'": "l'", "r2": "l2",
-        "u": "d", "u'": "d'", "u2": "d2",
-        "x": "x'", "x'": "x", "x2": "x2",
-        "y": "y'", "y'": "y", "y2": "y2",
-        "z": "z", "z'": "z'", "z2": "z2",
-    },
-    "x2 y'": {
-        "B": "R", "B'": "R'", "B2": "R2",
-        "D": "U", "D'": "U'", "D2": "U2",
-        "E": "E'", "E'": "E", "E2": "E2",
-        "F": "L", "F'": "L'", "F2": "L2",
-        "L": "F", "L'": "F'", "L2": "F2",
-        "M": "S", "M'": "S'", "M2": "S2",
-        "R": "B", "R'": "B'", "R2": "B2",
-        "S": "M", "S'": "M'", "S2": "M2",
-        "U": "D", "U'": "D'", "U2": "D2",
-        "b": "r", "b'": "r'", "b2": "r2",
-        "d": "u", "d'": "u'", "d2": "u2",
-        "f": "l", "f'": "l'", "f2": "l2",
-        "l": "f", "l'": "f'", "l2": "f2",
-        "r": "b", "r'": "b'", "r2": "b2",
-        "u": "d", "u'": "d'", "u2": "d2",
-        "x": "z'", "x'": "z", "x2": "z2",
-        "y": "y'", "y'": "y", "y2": "y2",
-        "z": "x'", "z'": "x", "z2": "x2",
-    },
-}
-
-# Forward automorphism: original -> canonical: m_canon = g^-1 * m_orig * g
-_ORIG_TO_CANON_MOVE: Dict[str, Dict[str, str]] = {
-    g: {v: k for k, v in table.items()} for g, table in _CANON_TO_ORIG_MOVE.items()
-}
-
-
-def _parse_move_sequence(moves: Union[str, Sequence[str]]) -> List[str]:
-    """Helper to parse move input into a list of normalized move names."""
-    if isinstance(moves, str):
-        events = MoveParser.parse_string(moves)
-        return [e.move for e in events]
-    parsed: List[str] = []
-    for item in moves:
-        if isinstance(item, str):
-            events = MoveParser.parse_string(item)
-            for e in events:
-                parsed.append(e.move)
-        else:
-            raise TypeError(f"Expected str move, got {type(item).__name__}")
-    return parsed
-
-
-def translate_moves_to_original(
-    moves: Union[str, Sequence[str]],
-    symmetry: Union[str, CanonicalSymmetry]
-) -> List[str]:
-    """Translates a move sequence from canonical/solve frame to original cube frame using the inverse automorphism.
-    
-    Formula: m_orig = g * m_canon * g^-1
-    """
-    sym = get_symmetry(symmetry)
-    parsed = _parse_move_sequence(moves)
-    mapping = _CANON_TO_ORIG_MOVE[sym.value]
-    return [mapping.get(m, m) for m in parsed]
-
-
-def translate_moves_to_canonical(
-    moves: Union[str, Sequence[str]],
-    symmetry: Union[str, CanonicalSymmetry]
-) -> List[str]:
-    """Translates a move sequence from original cube frame into canonical frame using forward automorphism.
-    
-    Formula: m_canon = g^-1 * m_orig * g
-    """
-    sym = get_symmetry(symmetry)
-    parsed = _parse_move_sequence(moves)
-    mapping = _ORIG_TO_CANON_MOVE[sym.value]
-    return [mapping.get(m, m) for m in parsed]
-
-
-def translate_moves(
-    moves: Union[str, Sequence[str]],
-    symmetry: Union[str, CanonicalSymmetry],
-    inverse: bool = True
-) -> List[str]:
-    """Translates move sequences between canonical frame and original cube frame.
-    
-    Args:
-        moves: String or sequence of moves.
-        symmetry: Target symmetry identifier.
-        inverse: If True (default), translates canonical -> original (inverse automorphism).
-                 If False, translates original -> canonical (forward automorphism).
-    """
-    if inverse:
-        return translate_moves_to_original(moves, symmetry)
-    return translate_moves_to_canonical(moves, symmetry)
-
-
-# -----------------------------------------------------------------------------
 # Cube State Conjugation & Canonical Mapping
 # -----------------------------------------------------------------------------
 
@@ -409,7 +132,7 @@ def extract_canonical_placement(
                    Default False (cube is in original/scramble frame).
     """
     sym = get_symmetry(symmetry)
-    b = ALL_BLOCK_DEFINITIONS[sym.value]
+    ori = get_orientation(sym)
     c_inspected = _ensure_inspected_cube(cube, sym, inspected)
 
     cp = c_inspected.cp.tolist()
@@ -417,17 +140,17 @@ def extract_canonical_placement(
     ep = c_inspected.ep.tolist()
     eo = c_inspected.eo.tolist()
 
-    dl_slot = ep.index(b.dl_piece)
-    fl_slot = ep.index(b.fl_piece)
-    bl_slot = ep.index(b.bl_piece)
-    dlf_slot = cp.index(b.dlf_piece)
-    dbl_slot = cp.index(b.dbl_piece)
+    dl_slot = ep.index(ori.dl_piece)
+    fl_slot = ep.index(ori.fl_piece)
+    bl_slot = ep.index(ori.bl_piece)
+    dlf_slot = cp.index(ori.dlf_piece)
+    dbl_slot = cp.index(ori.dbl_piece)
 
-    dl_eo = (eo[dl_slot] - b.dl_eo) % 2
-    fl_eo = (eo[fl_slot] - b.fl_eo) % 2
-    bl_eo = (eo[bl_slot] - b.bl_eo) % 2
-    dlf_co = (co[dlf_slot] - b.dlf_co) % 3
-    dbl_co = (co[dbl_slot] - b.dbl_co) % 3
+    dl_eo = (eo[dl_slot] - ori.dl_eo) % 2
+    fl_eo = (eo[fl_slot] - ori.fl_eo) % 2
+    bl_eo = (eo[bl_slot] - ori.bl_eo) % 2
+    dlf_co = (co[dlf_slot] - ori.dlf_co) % 3
+    dbl_co = (co[dbl_slot] - ori.dbl_co) % 3
 
     return FBPlacement(
         dl_slot=dl_slot, dl_eo=dl_eo,
@@ -472,18 +195,18 @@ def is_fb_solved_for_symmetry(
         inspected: Set True if cube has already been rotated by symmetry.inspection_rotation.
     """
     sym = get_symmetry(symmetry)
-    b = ALL_BLOCK_DEFINITIONS[sym.value]
+    ori = get_orientation(sym)
     c_inspected = _ensure_inspected_cube(cube, sym, inspected)
 
-    if c_inspected.ep[Edge.DL] != b.dl_piece or c_inspected.eo[Edge.DL] != b.dl_eo:
+    if c_inspected.ep[Edge.DL] != ori.dl_piece or c_inspected.eo[Edge.DL] != ori.dl_eo:
         return False
-    if c_inspected.ep[Edge.FL] != b.fl_piece or c_inspected.eo[Edge.FL] != b.fl_eo:
+    if c_inspected.ep[Edge.FL] != ori.fl_piece or c_inspected.eo[Edge.FL] != ori.fl_eo:
         return False
-    if c_inspected.ep[Edge.BL] != b.bl_piece or c_inspected.eo[Edge.BL] != b.bl_eo:
+    if c_inspected.ep[Edge.BL] != ori.bl_piece or c_inspected.eo[Edge.BL] != ori.bl_eo:
         return False
-    if c_inspected.cp[Corner.DLF] != b.dlf_piece or c_inspected.co[Corner.DLF] != b.dlf_co:
+    if c_inspected.cp[Corner.DLF] != ori.dlf_piece or c_inspected.co[Corner.DLF] != ori.dlf_co:
         return False
-    if c_inspected.cp[Corner.DBL] != b.dbl_piece or c_inspected.co[Corner.DBL] != b.dbl_co:
+    if c_inspected.cp[Corner.DBL] != ori.dbl_piece or c_inspected.co[Corner.DBL] != ori.dbl_co:
         return False
     return True
 

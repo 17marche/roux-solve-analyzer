@@ -14,6 +14,7 @@ import numpy as np
 
 from ..core.constants import Corner, Edge, Center
 from ..core.cube import CubeState
+from ..core.orientation import SBPlacement
 
 
 # -----------------------------------------------------------------------------
@@ -112,21 +113,6 @@ class RightFrontSquarePlacement:
     fr_eo: int
     dfr_slot: int
     dfr_co: int
-
-
-@dataclass(frozen=True)
-class SBPlacement:
-    """Structured position and orientation coordinates for Second Block pieces."""
-    dr_slot: int
-    dr_eo: int
-    fr_slot: int
-    fr_eo: int
-    br_slot: int
-    br_eo: int
-    dfr_slot: int
-    dfr_co: int
-    dbr_slot: int
-    dbr_co: int
 
 
 # -----------------------------------------------------------------------------

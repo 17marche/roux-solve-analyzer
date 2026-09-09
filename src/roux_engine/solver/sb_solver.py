@@ -108,8 +108,14 @@ def _build_dr_transitions() -> Tuple[Tuple[int, ...], ...]:
 
 from ..core.constants import Color, Center
 from ..core.cube import CubeState
-from ..segmenter.fb_detector import BlockDefinition, ALL_BLOCK_DEFINITIONS, FBDetector
-from ..segmenter.sb_detector import SBDetector
+from ..core.orientation import (
+    RouxOrientation,
+    SBPlacement,
+    get_orientation,
+    get_dual_neutral_orientations,
+    get_all_orientations,
+)
+
 
 
 @dataclass(frozen=True)
@@ -128,40 +134,36 @@ class SBSolution:
 
 def get_m_slice_center_offset(
     cube: CubeState,
-    block: BlockDefinition = ALL_BLOCK_DEFINITIONS[""]
+    orientation: Union[str, RouxOrientation, Any] = "",
+    *,
+    block: Optional[Any] = None,
 ) -> int:
-    """Determines the M-slice rotation offset in {0, 1, 2, 3} for the cube relative to block definition.
+    """Determines the M-slice rotation offset in {0, 1, 2, 3} for the cube relative to orientation.
     0: Aligned with First Block.
     1: Rotated by M.
     2: Rotated by M2.
     3: Rotated by M'.
     """
-    u_col = Color(cube.centers[Center.U])
-    if u_col == block.top_color:
-        return 0
-    elif u_col == block.back_color:
-        return 1
-    elif u_col == block.bottom_color:
-        return 2
-    elif u_col == block.front_color:
-        return 3
-    else:
-        raise ValueError(
-            f"Center U color {u_col.name} is not in M-slice for block {block.rotations!r}"
-        )
+    target = block if block is not None else orientation
+    ori = get_orientation(target)
+    return ori.get_m_slice_center_offset(cube)
 
 
 def is_center_aligned_sb_solved(
     cube: CubeState,
-    block: BlockDefinition = ALL_BLOCK_DEFINITIONS[""]
+    orientation: Union[str, RouxOrientation, Any] = "",
+    *,
+    block: Optional[Any] = None,
 ) -> bool:
     """Checks if Center-Aligned Second Block is strictly solved:
     1. All 5 Second Block pieces (DR, FR, BR, DFR, DRB) are solved.
     2. M-slice centers (U, D, F, B) are aligned with the U/D axis (offset 0 or 2).
+
+    Delegates directly to RouxOrientation.is_center_aligned_sb_solved.
     """
-    if not SBDetector.is_right_1x2x3_block_solved(cube, block):
-        return False
-    return get_m_slice_center_offset(cube, block) % 2 == 0
+    target = block if block is not None else orientation
+    ori = get_orientation(target)
+    return ori.is_center_aligned_sb_solved(cube)
 
 
 # -----------------------------------------------------------------------------
@@ -199,32 +201,14 @@ from .symmetry import (
 
 def extract_sb_placement(
     cube: CubeState,
-    block: BlockDefinition = ALL_BLOCK_DEFINITIONS[""]
+    orientation: Union[str, RouxOrientation, Any] = "",
+    *,
+    block: Optional[Any] = None,
 ) -> SBPlacement:
-    """Extracts SBPlacement relative to a given dual-neutral block definition."""
-    cp = cube.cp.tolist()
-    co = cube.co.tolist()
-    ep = cube.ep.tolist()
-    eo = cube.eo.tolist()
-
-    dfr_slot = cp.index(block.dfr_piece)
-    dbr_slot = cp.index(block.drb_piece)
-    dr_slot = ep.index(block.dr_piece)
-    fr_slot = ep.index(block.fr_piece)
-    br_slot = ep.index(block.br_piece)
-
-    return SBPlacement(
-        dr_slot=dr_slot,
-        dr_eo=(eo[dr_slot] - block.dr_eo) % 2,
-        fr_slot=fr_slot,
-        fr_eo=(eo[fr_slot] - block.fr_eo) % 2,
-        br_slot=br_slot,
-        br_eo=(eo[br_slot] - block.br_eo) % 2,
-        dfr_slot=dfr_slot,
-        dfr_co=(co[dfr_slot] - block.dfr_co) % 3,
-        dbr_slot=dbr_slot,
-        dbr_co=(co[dbr_slot] - block.drb_co) % 3,
-    )
+    """Extracts SBPlacement relative to a given orientation, delegating to RouxOrientation."""
+    target = block if block is not None else orientation
+    ori = get_orientation(target)
+    return ori.extract_sb_placement(cube)
 
 
 class SBSolver:
@@ -316,7 +300,7 @@ class SBSolver:
         self,
         base_cube: CubeState,
         moves: Tuple[str, ...],
-        block: BlockDefinition,
+        block: RouxOrientation,
         orientation: str,
         uninspected: bool,
         sym: CanonicalSymmetry,
@@ -344,10 +328,10 @@ class SBSolver:
         square_move_idx: Optional[int] = None
 
         sim = base_cube.copy()
-        if SBDetector.is_dr_solved(sim, block):
+        if block.is_dr_solved(sim):
             dr_move_idx = 0
-        back_init = SBDetector.is_back_pair_solved(sim, block)
-        front_init = SBDetector.is_front_pair_solved(sim, block)
+        back_init = block.is_back_pair_solved(sim)
+        front_init = block.is_front_pair_solved(sim)
         if back_init or front_init:
             pair1_move_idx = 0
         if dr_move_idx == 0 and pair1_move_idx == 0:
@@ -355,9 +339,9 @@ class SBSolver:
 
         for idx, m_token in enumerate(moves):
             sim.apply_move(m_token)
-            dr_ok = SBDetector.is_dr_solved(sim, block)
-            back_ok = SBDetector.is_back_pair_solved(sim, block)
-            front_ok = SBDetector.is_front_pair_solved(sim, block)
+            dr_ok = block.is_dr_solved(sim)
+            back_ok = block.is_back_pair_solved(sim)
+            front_ok = block.is_front_pair_solved(sim)
             pair1_ok = back_ok or front_ok
             square_ok = dr_ok and pair1_ok
 
@@ -456,7 +440,7 @@ class SBSolver:
     def _solve_square_pair_order(
         self,
         base_cube: CubeState,
-        block: BlockDefinition,
+        block: RouxOrientation,
         sym: CanonicalSymmetry,
         uninspected: bool,
         ori_str: str,
@@ -547,7 +531,7 @@ class SBSolver:
     def _solve_square_pair(
         self,
         base_cube: CubeState,
-        block: BlockDefinition,
+        block: RouxOrientation,
         sym: CanonicalSymmetry,
         uninspected: bool,
         ori_str: str,
@@ -624,7 +608,7 @@ class SBSolver:
     def _solve_classical_order(
         self,
         base_cube: CubeState,
-        block: BlockDefinition,
+        block: RouxOrientation,
         sym: CanonicalSymmetry,
         uninspected: bool,
         ori_str: str,
@@ -729,7 +713,7 @@ class SBSolver:
     def _solve_classical(
         self,
         base_cube: CubeState,
-        block: BlockDefinition,
+        block: RouxOrientation,
         sym: CanonicalSymmetry,
         uninspected: bool,
         ori_str: str,
@@ -767,7 +751,7 @@ class SBSolver:
     def _solve_free(
         self,
         base_cube: CubeState,
-        block: BlockDefinition,
+        block: RouxOrientation,
         sym: CanonicalSymmetry,
         uninspected: bool,
         ori_str: str,
@@ -835,7 +819,7 @@ class SBSolver:
     def _solve_all(
         self,
         base_cube: CubeState,
-        block: BlockDefinition,
+        block: RouxOrientation,
         sym: CanonicalSymmetry,
         uninspected: bool,
         ori_str: str,
@@ -907,12 +891,14 @@ class SBSolver:
 
         # Resolve orientation and symmetry frame
         sym: CanonicalSymmetry
-        block: BlockDefinition
+        ori: RouxOrientation
         uninspected: bool = False
 
         if orientation is not None:
-            sym = get_symmetry(orientation)
-            block = ALL_BLOCK_DEFINITIONS[sym.value]
+            ori = get_orientation(orientation)
+            if ori.symmetry is None:
+                raise ValueError(f"Orientation {ori.rotations!r} is not dual-neutral")
+            sym = ori.symmetry
             # Verify FB is solved on cube
             if is_fb_solved_for_symmetry(cube, sym, inspected=True):
                 uninspected = False
@@ -928,10 +914,15 @@ class SBSolver:
         else:
             # Auto-detect orientation:
             # 1. Check if FB is already on Left face (inspected solve frame)
-            matched = FBDetector.match_fb_block(cube)
+            matched: Optional[RouxOrientation] = None
+            for candidate in get_dual_neutral_orientations():
+                if candidate.is_fb_solved(cube):
+                    matched = candidate
+                    break
+
             if matched is not None:
-                block = matched
-                sym = get_symmetry(block.rotations)
+                ori = matched
+                sym = matched.symmetry  # guaranteed non-None for dual-neutral
                 uninspected = False
             else:
                 # 2. Check if FB was solved in uninspected frame
@@ -942,7 +933,7 @@ class SBSolver:
                         break
                 if found_sym is not None:
                     sym = found_sym
-                    block = ALL_BLOCK_DEFINITIONS[sym.value]
+                    ori = get_orientation(sym)
                     uninspected = True
                     if sym.inspection_rotation:
                         cube.apply_moves(sym.inspection_rotation)
@@ -955,7 +946,7 @@ class SBSolver:
         ori_str = sym.value
 
         # Extract piece coordinates and center offset
-        placement = extract_sb_placement(cube, block)
+        placement = extract_sb_placement(cube, ori)
         c_idx = SBIndexer.encode_corners(
             placement.dfr_slot, placement.dfr_co,
             placement.dbr_slot, placement.dbr_co
@@ -965,7 +956,7 @@ class SBSolver:
             placement.fr_slot, placement.fr_eo,
             placement.br_slot, placement.br_eo
         )
-        center_off = get_m_slice_center_offset(cube, block)
+        center_off = get_m_slice_center_offset(cube, ori)
 
         VALID_STYLES = {"all", "free", "square_pair", "classical"}
         if style not in VALID_STYLES:
@@ -978,7 +969,7 @@ class SBSolver:
         if style == "all":
             return self._solve_all(
                 base_cube=cube,
-                block=block,
+                block=ori,
                 sym=sym,
                 uninspected=uninspected,
                 ori_str=ori_str,
@@ -993,7 +984,7 @@ class SBSolver:
         elif style == "square_pair":
             return self._solve_square_pair(
                 base_cube=cube,
-                block=block,
+                block=ori,
                 sym=sym,
                 uninspected=uninspected,
                 ori_str=ori_str,
@@ -1008,7 +999,7 @@ class SBSolver:
         elif style == "classical":
             return self._solve_classical(
                 base_cube=cube,
-                block=block,
+                block=ori,
                 sym=sym,
                 uninspected=uninspected,
                 ori_str=ori_str,
@@ -1023,7 +1014,7 @@ class SBSolver:
         else:
             return self._solve_free(
                 base_cube=cube,
-                block=block,
+                block=ori,
                 sym=sym,
                 uninspected=uninspected,
                 ori_str=ori_str,

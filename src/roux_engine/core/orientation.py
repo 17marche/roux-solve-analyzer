@@ -254,6 +254,19 @@ def _parse_move_sequence(moves: Union[str, Sequence[str]]) -> List[str]:
     return parsed
 
 
+def _resolve_symmetry(symmetry: Union[str, CanonicalSymmetry, RouxOrientation, Any]) -> CanonicalSymmetry:
+    if isinstance(symmetry, CanonicalSymmetry):
+        return symmetry
+    if isinstance(symmetry, RouxOrientation):
+        if symmetry.symmetry is not None:
+            return symmetry.symmetry
+        raise ValueError(f"Orientation {symmetry.rotations!r} is not dual-neutral")
+    ori = get_orientation(symmetry)
+    if ori.symmetry is not None:
+        return ori.symmetry
+    raise ValueError(f"Orientation {ori.rotations!r} is not dual-neutral")
+
+
 def translate_moves_to_original(
     moves: Union[str, Sequence[str]],
     symmetry: Union[str, CanonicalSymmetry]
@@ -262,7 +275,7 @@ def translate_moves_to_original(
     
     Formula: m_orig = g * m_canon * g^-1
     """
-    sym = symmetry if isinstance(symmetry, CanonicalSymmetry) else CanonicalSymmetry(symmetry)
+    sym = _resolve_symmetry(symmetry)
     parsed = _parse_move_sequence(moves)
     mapping = _CANON_TO_ORIG_MOVE[sym.value]
     return [mapping.get(m, m) for m in parsed]
@@ -276,7 +289,7 @@ def translate_moves_to_canonical(
     
     Formula: m_canon = g^-1 * m_orig * g
     """
-    sym = symmetry if isinstance(symmetry, CanonicalSymmetry) else CanonicalSymmetry(symmetry)
+    sym = _resolve_symmetry(symmetry)
     parsed = _parse_move_sequence(moves)
     mapping = _ORIG_TO_CANON_MOVE[sym.value]
     return [mapping.get(m, m) for m in parsed]
@@ -670,6 +683,11 @@ def get_orientation(
         if val in _ORIENTATIONS_BY_ROTATION:
             return _ORIENTATIONS_BY_ROTATION[val]
 
+    if hasattr(identifier, "rotations") and isinstance(getattr(identifier, "rotations"), str):
+        rot = getattr(identifier, "rotations")
+        if rot in _ORIENTATIONS_BY_ROTATION:
+            return _ORIENTATIONS_BY_ROTATION[rot]
+
     if isinstance(identifier, tuple) and len(identifier) == 2:
         c1, c2 = identifier
         if isinstance(c1, int) and not isinstance(c1, Color):
@@ -702,6 +720,17 @@ def get_orientation(
         }
         if normalized_lower in alias_map:
             return _ORIENTATIONS_BY_ROTATION[alias_map[normalized_lower]]
+
+        if "-" in normalized:
+            parts = normalized.split("-")
+            if len(parts) == 2:
+                try:
+                    c_bottom = Color[parts[0].upper()]
+                    c_left = Color[parts[1].upper()]
+                    if (c_bottom, c_left) in _ORIENTATIONS_BY_COLOR_PAIR:
+                        return _ORIENTATIONS_BY_COLOR_PAIR[(c_bottom, c_left)]
+                except KeyError:
+                    pass
 
     raise ValueError(f"Unrecognized orientation identifier: {identifier!r}")
 
