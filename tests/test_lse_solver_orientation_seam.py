@@ -7,6 +7,7 @@ from roux_engine.solver.lse_solver import (
     LSEPath,
     solve_lse,
     solve_lse_paths,
+    resolve_lse_orientation,
 )
 
 
@@ -357,3 +358,231 @@ class TestLSEGraphSingletonPreservation:
         assert clean_code == (1 << 12) | (3 << 9) | (0 << 3) | (1 << 2) | 0
         assert graph.contains_state(clean)
         assert graph.state_to_id[clean_code] == 0
+
+
+_MULTI_ORIENTATION_SCRAMBLES = [
+    "M'",  # 4 bad edges (UF, UB, DF, DB)
+    "M2 U2 M2",  # opp-opp 4c permutation case
+    "M U' M U M2 U M U M' U2",  # arrow EO / misoriented EOLR candidate
+    "U M2 U'",  # EOLR with EO solved, UL/UR in DF/DB
+    "M U2 M U2 M' U2 M",  # 6 bad edges
+    "M' U2 M2 U2 M'",  # dots 4c case
+    "U2 M U2 M2 U2 M U2 M2",  # bars 4c case
+]
+
+
+class TestLSEMultiOrientationDualNeutralSuite:
+    """Issue 03: Optimal LSE solving and comparative paths across all 8 Dual-Neutral orientations."""
+
+    def test_solve_lse_optimal_solutions_all_eight_dual_neutral(self):
+        """solve_lse produces optimal move sequences solving LSE across all 8 Dual-Neutral orientations."""
+        from roux_engine.core.orientation import get_dual_neutral_orientations
+
+        for ori in get_dual_neutral_orientations():
+            for sc in _MULTI_ORIENTATION_SCRAMBLES:
+                cube = CubeState()
+                if ori.rotations:
+                    cube.apply_moves(ori.rotations)
+                cube.apply_moves(sc)
+
+                # Target "lse" (1-look global LSE)
+                sols = solve_lse(cube, target="lse")
+                assert len(sols) == 1
+                sol = sols[0]
+                assert sol.orientation == ori.rotations
+                assert sol.target == "lse"
+                assert sol.move_count == len(sol.moves)
+
+                # Applying moves to cube must restore the oriented solved state
+                sim = cube.copy().apply_moves(sol.moves)
+                target = CubeState()
+                if ori.rotations:
+                    target.apply_moves(ori.rotations)
+                assert sim == target, f"1-look LSE failed for orientation {ori.rotations!r} on scramble {sc!r}"
+
+                # Canonical STM isomorphism check:
+                # The optimal STM must match canonical White-bottom/Blue-left exactly
+                cube_canon = CubeState().apply_moves(sc)
+                canon_sols = solve_lse(cube_canon, target="lse")
+                assert sol.move_count == canon_sols[0].move_count, (
+                    f"STM mismatch for {ori.rotations!r}: {sol.move_count} != {canon_sols[0].move_count}"
+                )
+
+    def test_solve_lse_sub_steps_all_eight_dual_neutral(self):
+        """solve_lse produces valid sub-step solutions across all 8 Dual-Neutral orientations."""
+        from roux_engine.core.orientation import get_dual_neutral_orientations
+
+        for ori in get_dual_neutral_orientations():
+            for sc in _MULTI_ORIENTATION_SCRAMBLES:
+                cube = CubeState()
+                if ori.rotations:
+                    cube.apply_moves(ori.rotations)
+                cube.apply_moves(sc)
+
+                # Target "4a": Step 4a (EO)
+                sols_4a = solve_lse(cube, target="4a")
+                assert len(sols_4a) >= 1
+                sol_4a = sols_4a[0]
+                assert sol_4a.orientation == ori.rotations
+                sim_4a = cube.copy().apply_moves(sol_4a.moves)
+                assert ori.is_eo_solved(sim_4a), f"EO failed for {ori.rotations!r} on {sc!r}"
+                assert ori.get_m_slice_center_offset(sim_4a) in (0, 2), f"Centers not on U/D axis for {ori.rotations!r}"
+
+                # Target "4b": Step 4b (UL/UR) on EO-solved state
+                sols_4b = solve_lse(sim_4a, target="4b")
+                assert len(sols_4b) >= 1
+                sol_4b = sols_4b[0]
+                assert sol_4b.orientation == ori.rotations
+                sim_4b = sim_4a.copy().apply_moves(sol_4b.moves)
+                assert ori.is_eo_solved(sim_4b)
+                assert ori.is_ul_ur_solved(sim_4b), f"UL/UR failed for {ori.rotations!r}"
+
+                # Target "4c": Step 4c (M-Permutation) on UL/UR-solved state
+                sols_4c = solve_lse(sim_4b, target="4c")
+                assert len(sols_4c) >= 1
+                sol_4c = sols_4c[0]
+                assert sol_4c.orientation == ori.rotations
+                sim_4c = sim_4b.copy().apply_moves(sol_4c.moves)
+                target = CubeState()
+                if ori.rotations:
+                    target.apply_moves(ori.rotations)
+                assert sim_4c == target, f"Step 4c failed for {ori.rotations!r}"
+
+    def test_solve_lse_paths_all_eight_dual_neutral(self):
+        """solve_lse_paths produces 4 valid solving paths across all 8 Dual-Neutral orientations."""
+        from roux_engine.core.orientation import get_dual_neutral_orientations
+
+        for ori in get_dual_neutral_orientations():
+            for sc in _MULTI_ORIENTATION_SCRAMBLES:
+                cube = CubeState()
+                if ori.rotations:
+                    cube.apply_moves(ori.rotations)
+                cube.apply_moves(sc)
+
+                paths = solve_lse_paths(cube)
+                assert len(paths) == 4
+                for name, path in paths.items():
+                    assert path.name == name
+                    assert path.orientation == ori.rotations
+                    assert path.step_4a.orientation == ori.rotations
+                    assert path.step_4b.orientation == ori.rotations
+                    assert path.step_4c.orientation == ori.rotations
+
+                    # Total moves must solve the cube in this orientation
+                    sim = cube.copy().apply_moves(path.total_moves)
+                    target = CubeState()
+                    if ori.rotations:
+                        target.apply_moves(ori.rotations)
+                    assert sim == target, f"Path {name} failed for orientation {ori.rotations!r} on scramble {sc!r}"
+
+    def test_explicit_orientation_overrides_all_eight_dual_neutral(self):
+        """solve_lse and solve_lse_paths accept explicit overrides via symmetry, string, and color pair."""
+        from roux_engine.core.orientation import CanonicalSymmetry, get_orientation
+
+        for sym in CanonicalSymmetry:
+            ori = get_orientation(sym)
+            cube = CubeState()
+            if ori.rotations:
+                cube.apply_moves(ori.rotations)
+            cube.apply_moves("M' U2 M U M2")
+
+            # 1. Override via CanonicalSymmetry enum
+            sols_sym = solve_lse(cube, target="lse", orientation=sym)
+            assert sols_sym[0].orientation == ori.rotations
+
+            # 2. Override via rotation string
+            sols_str = solve_lse(cube, target="lse", orientation=sym.value)
+            assert sols_str[0].orientation == ori.rotations
+
+            # 3. Override via (bottom_color, left_color) tuple
+            sols_colors = solve_lse(cube, target="lse", orientation=(ori.bottom_color, ori.left_color))
+            assert sols_colors[0].orientation == ori.rotations
+
+            # 4. solve_lse_paths with explicit override
+            paths_sym = solve_lse_paths(cube, orientation=sym)
+            for p in paths_sym.values():
+                assert p.orientation == ori.rotations
+
+
+class TestLSEUninspectedWorldFrameSuite:
+    """Issue 03: Solving transcripts with omitted inspection rotations in world frame."""
+
+    def test_auto_detect_and_solve_uninspected_all_symmetries(self):
+        """solve_lse auto-detects omitted inspection rotations and solves world cube physically for all 8 symmetries."""
+        from roux_engine.core.orientation import CanonicalSymmetry, get_orientation, translate_moves_to_original
+
+        for sym in CanonicalSymmetry:
+            ori = get_orientation(sym)
+            for sc in _MULTI_ORIENTATION_SCRAMBLES:
+                world_scramble = translate_moves_to_original(sc.split(), sym)
+                cube_world = CubeState().apply_moves(" ".join(world_scramble))
+
+                # Auto-detection: solve_lse solves the physical cube directly in world frame
+                sols = solve_lse(cube_world, target="lse")
+                assert len(sols) == 1
+                sol = sols[0]
+                assert sol.move_count == len(sol.moves)
+
+                sim = cube_world.copy().apply_moves(sol.moves)
+                assert sim.is_solved(), f"Uninspected solve_lse failed for {sym.name} on scramble {sc!r}"
+
+                # Explicit orientation override: validates orientation and is_inspected flag
+                det_ori_exp, is_ins_exp = resolve_lse_orientation(cube_world, orientation=sym)
+                assert det_ori_exp == ori
+                if sym == CanonicalSymmetry.I:
+                    assert is_ins_exp is True
+                else:
+                    assert is_ins_exp is False
+                sols_exp = solve_lse(cube_world, target="lse", orientation=sym)
+                assert sols_exp[0].orientation == ori.rotations
+                assert cube_world.copy().apply_moves(sols_exp[0].moves).is_solved()
+
+    def test_solve_lse_paths_uninspected_all_symmetries(self):
+        """solve_lse_paths produces 4 valid paths directly executable in world frame for all 8 symmetries."""
+        from roux_engine.core.orientation import CanonicalSymmetry, translate_moves_to_original
+
+        for sym in CanonicalSymmetry:
+            for sc in _MULTI_ORIENTATION_SCRAMBLES:
+                world_scramble = translate_moves_to_original(sc.split(), sym)
+                cube_world = CubeState().apply_moves(" ".join(world_scramble))
+
+                paths = solve_lse_paths(cube_world)
+                assert len(paths) == 4
+
+                for name, path in paths.items():
+                    sim = cube_world.copy().apply_moves(path.total_moves)
+                    assert sim.is_solved(), f"Uninspected path {name} failed for {sym.name} on {sc!r}"
+
+    def test_uninspected_fcn_rotations(self):
+        """solve_lse and solve_lse_paths handle omitted inspection rotations for Full Color Neutral orientations."""
+        from roux_engine.core.orientation import get_orientation
+        from roux_engine.core.parser import MoveParser
+        from roux_engine.core.moves import MOVES
+
+        # Test with FCN rotation "z"
+        ori_z = get_orientation("z")
+        inv_z = " ".join(MoveParser.invert_moves("z"))
+        # Conjugate moves by z: m_world = z * m * z^-1
+        sc_canon = ["M'", "U2", "M", "U", "M2"]
+        sc_world: list[str] = []
+        for m in sc_canon:
+            c = CubeState().apply_moves(f"z {m} {inv_z}")
+            for cand in MOVES.keys():
+                if CubeState().apply_move(cand) == c:
+                    sc_world.append(cand)
+                    break
+
+        cube_world = CubeState().apply_moves(" ".join(sc_world))
+        sols = solve_lse(cube_world, target="lse")
+        assert len(sols) == 1
+        assert sols[0].orientation == ori_z.rotations
+        sim = cube_world.copy().apply_moves(sols[0].moves)
+        assert sim.is_solved()
+
+        paths = solve_lse_paths(cube_world)
+        assert len(paths) == 4
+        for name, p in paths.items():
+            assert p.orientation == ori_z.rotations
+            sim_p = cube_world.copy().apply_moves(p.total_moves)
+            assert sim_p.is_solved()
+

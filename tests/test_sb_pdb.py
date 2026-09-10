@@ -256,6 +256,7 @@ class TestSBPDBLoaders:
         t0 = time.perf_counter()
         pdb = SBPDB()
         t1 = time.perf_counter()
+        assert pdb is not None
         startup_ms = (t1 - t0) * 1000
         assert startup_ms < 5.0, f"Startup took {startup_ms:.2f}ms, expected < 5ms"
 

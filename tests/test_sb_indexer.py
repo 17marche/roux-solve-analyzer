@@ -272,7 +272,7 @@ class TestRightBackSquareIndexing:
 
     def test_solved_rbs_maps_to_zero(self):
         """Canonical solved RBS positions and orientations must map to index 0."""
-        from roux_engine.solver.sb_indexer import RightBackSquareIndexer, RightBackSquarePlacement
+        from roux_engine.solver.sb_indexer import RightBackSquareIndexer
         cube = CubeState()
         assert RightBackSquareIndexer.encode(cube) == 0
 
@@ -387,7 +387,7 @@ class TestRightFrontSquareIndexing:
 
     def test_solved_rfs_maps_to_zero(self):
         """Canonical solved RFS positions and orientations must map to index 0."""
-        from roux_engine.solver.sb_indexer import RightFrontSquareIndexer, RightFrontSquarePlacement
+        from roux_engine.solver.sb_indexer import RightFrontSquareIndexer
         cube = CubeState()
         assert RightFrontSquareIndexer.encode(cube) == 0
 

@@ -10,8 +10,14 @@ from roux_engine.data.loader import RecoDatasetLoader, SolveRecord
 from roux_engine.segmenter.segmenter import RouxSegmenter
 from roux_engine.core.parser import MoveParser
 from roux_engine.core.cube import CubeState
-from roux_engine.solver.sb_solver import solve_sb, is_center_aligned_sb_solved
+from roux_engine.solver.sb_solver import solve_sb, is_center_aligned_sb_solved, SBSolution
 from roux_engine.solver.sb_pdb_generator import SB_MOVESET
+from roux_engine.solver.lse_solver import (
+    solve_lse,
+    solve_lse_paths,
+    resolve_lse_orientation,
+)
+from roux_engine.core.orientation import RouxOrientation
 from roux_engine.segmenter.fb_detector import ALL_BLOCK_DEFINITIONS, FBDetector, BlockDefinition
 
 
@@ -323,6 +329,203 @@ def test_reco_benchmark_sb_multi_style_candidates(
                 assert sol.style == test_style
                 assert sol.resulting_cmll_case != ""
                 _verify_candidate_solution_invariants(case, sol, valid_moveset)
+
+
+# =============================================================================
+# Milestone 3.6: Real-World Solve Dataset LSE Solver Benchmark & Verification
+# =============================================================================
+
+@dataclass(frozen=True)
+class LSEBenchmarkCase:
+    """Benchmark test case encapsulating a reconstructed solve state at the start of LSE."""
+    record: SolveRecord
+    lse_cube: CubeState
+    human_lse_stm: int
+    orientation: RouxOrientation
+    is_inspected: bool
+
+    def verify_solved(self, state: CubeState) -> bool:
+        """Returns True if state is solved according to this benchmark case's frame."""
+        if self.is_inspected:
+            target = CubeState()
+            if self.orientation.rotations:
+                target.apply_moves(self.orientation.rotations)
+            return state == target
+        return state.is_solved()
+
+    def to_inspected_frame(self, state: CubeState) -> CubeState:
+        """Returns a copy of the state aligned to the inspected hand frame for orientation queries."""
+        if self.is_inspected:
+            return state
+        res = state.copy()
+        if self.orientation.rotations:
+            res.apply_moves(self.orientation.rotations)
+        return res
+
+
+@pytest.fixture(scope="module")
+def lse_benchmark_solves(valid_solves: List[SolveRecord]) -> List[LSEBenchmarkCase]:
+    """Segments valid solves and extracts states at the start of LSE for dual-neutral solves."""
+    segmenter = RouxSegmenter(full_color_neutral=False)
+    benchmark_solves: List[LSEBenchmarkCase] = []
+
+    for record in valid_solves:
+        events = MoveParser.parse_string(record.solution)
+        seg = segmenter.segment_events(record.scramble, events)
+        if not (seg.is_valid and seg.fb and seg.sb and seg.cmll and seg.lse):
+            continue
+
+        # Prepare cube state at start of LSE (after CMLL completion)
+        cube = CubeState().apply_moves(record.scramble)
+        for event in events[:seg.lse.start_move_idx]:
+            cube.apply_move(event.move)
+
+        try:
+            ori, is_inspected = resolve_lse_orientation(cube)
+        except Exception:
+            continue
+
+        # Ensure First Block and Second Block are solved in the detected orientation
+        if not (ori.is_fb_solved(cube) or (not is_inspected and ori.is_fb_solved(cube.copy().apply_moves(ori.rotations)))):
+            continue
+        if not (ori.is_sb_solved(cube) or (not is_inspected and ori.is_sb_solved(cube.copy().apply_moves(ori.rotations)))):
+            continue
+
+        # Extract human reconstructor's LSE movecount in Slice Turn Metric (STM)
+        human_lse_stm = seg.lse.move_count_stm
+
+        benchmark_solves.append(
+            LSEBenchmarkCase(
+                record=record,
+                lse_cube=cube,
+                human_lse_stm=human_lse_stm,
+                orientation=ori,
+                is_inspected=is_inspected,
+            )
+        )
+
+    assert len(benchmark_solves) >= 900, (
+        f"Expected >= 900 dual-neutral LSE benchmark solves, got {len(benchmark_solves)}"
+    )
+    return benchmark_solves
+
+
+def test_reco_benchmark_lse_stm_superiority_and_soundness(
+    lse_benchmark_solves: List[LSEBenchmarkCase]
+):
+    """Verify LSE solver restores the cube on 100% of real-world solve states and achieves STM <= human in >= 80% of solves."""
+    shorter_or_equal_count = 0
+    total_human_stm = 0
+    total_solver_stm = 0
+    tested = len(lse_benchmark_solves)
+
+    for case in lse_benchmark_solves:
+        sols = solve_lse(case.lse_cube, target="lse")
+        assert len(sols) == 1, f"No LSE solution found for solve {case.record.id}"
+        best_sol = sols[0]
+
+        # Verify that applying candidate moves preserves FB, SB, and corners, and restores the cube
+        sim = case.lse_cube.copy()
+        if best_sol.moves:
+            sim.apply_moves(" ".join(best_sol.moves))
+
+        assert case.verify_solved(sim), (
+            f"Solve {case.record.id}: LSE solution failed to restore cube to solved state: {best_sol.moves}"
+        )
+
+        total_human_stm += case.human_lse_stm
+        total_solver_stm += best_sol.move_count
+
+        if best_sol.move_count <= case.human_lse_stm:
+            shorter_or_equal_count += 1
+
+    superiority_rate = (shorter_or_equal_count / tested) * 100.0
+    avg_human = total_human_stm / tested
+    avg_solver = total_solver_stm / tested
+
+    print(f"\n--- Real-World Last Six Edges (LSE) STM Benchmark ({tested} solves) ---")
+    print(f"  Human Reconstructor Average LSE: {avg_human:.2f} STM")
+    print(f"  Graph Solver Average LSE:        {avg_solver:.2f} STM")
+    print(f"  Average STM Savings:             {avg_human - avg_solver:.2f} STM ({(1 - avg_solver/avg_human)*100:.1f}%)")
+    print(f"  Shorter or Equal to Human:       {shorter_or_equal_count}/{tested} ({superiority_rate:.2f}%)")
+
+    assert superiority_rate >= 80.0, (
+        f"LSE solver superiority rate {superiority_rate:.2f}% lower than target 80.0%"
+    )
+
+
+def test_reco_benchmark_lse_sub_steps_and_four_paths(
+    lse_benchmark_solves: List[LSEBenchmarkCase]
+):
+    """Verify that solve_lse_paths produces 4 valid paths with sound sub-step progression across real-world solves."""
+    sample = lse_benchmark_solves[:100]
+
+    for case in sample:
+        paths = solve_lse_paths(case.lse_cube)
+        assert len(paths) == 4
+        assert "standard" in paths
+        assert "eolr" in paths
+        assert "eolr_misoriented" in paths
+        assert "eolr_b" in paths
+
+        ori = case.orientation
+
+        for name, path in paths.items():
+            assert path.orientation == ori.rotations
+            assert path.step_4a.orientation == ori.rotations
+            assert path.step_4b.orientation == ori.rotations
+            assert path.step_4c.orientation == ori.rotations
+
+            # Total moves must solve the cube
+            sim = case.lse_cube.copy().apply_moves(path.total_moves)
+            assert case.verify_solved(sim), f"Solve {case.record.id}: path {name} failed to solve cube"
+
+            # Verify sub-step progression: Step 4a -> Step 4b -> Step 4c
+            sim_4a = case.lse_cube.copy().apply_moves(path.step_4a.moves)
+            sim_4a_ins = case.to_inspected_frame(sim_4a)
+            if path.step_4a.center_state == "axis_aligned":
+                assert ori.is_eo_solved(sim_4a_ins), f"Solve {case.record.id}: Step 4a EO failed on {name}"
+            else:
+                assert ori.get_m_slice_center_offset(sim_4a_ins) in (1, 3), (
+                    f"Solve {case.record.id}: Step 4a misaligned centers failed on {name}"
+                )
+
+            sim_4b = sim_4a.copy().apply_moves(path.step_4b.moves)
+            sim_4b_ins = case.to_inspected_frame(sim_4b)
+            assert ori.is_eo_solved(sim_4b_ins), f"Solve {case.record.id}: Step 4b EO failed on {name}"
+            assert ori.is_ul_ur_solved(sim_4b_ins), f"Solve {case.record.id}: Step 4b UL/UR failed on {name}"
+
+            # Step 4c completes the entire solve
+            sim_4c = sim_4b.copy().apply_moves(path.step_4c.moves)
+            assert case.verify_solved(sim_4c), (
+                f"Solve {case.record.id}: Step 4c failed to restore solved cube on {name}"
+            )
+
+
+def test_reco_benchmark_lse_single_search_latency_sub_millisecond(
+    lse_benchmark_solves: List[LSEBenchmarkCase]
+):
+    """Verify single LSE solve search latency averages < 1.0 ms across real-world solve states."""
+    sample = lse_benchmark_solves[:100]
+    latencies_us: List[float] = []
+
+    # Warmup
+    solve_lse(sample[0].lse_cube, target="lse")
+
+    for case in sample:
+        t0 = time.perf_counter()
+        sols = solve_lse(case.lse_cube, target="lse")
+        latencies_us.append((time.perf_counter() - t0) * 1e6)
+        assert len(sols) == 1
+
+    avg_latency_us = sum(latencies_us) / len(latencies_us)
+    avg_latency_ms = avg_latency_us / 1000.0
+
+    print(f"\n--- Last Six Edges (LSE) Search Latency Benchmark ({len(sample)} solves) ---")
+    print(f"  Average LSE Query Latency: {avg_latency_us:.2f} µs ({avg_latency_ms:.3f} ms)")
+
+    assert avg_latency_ms < 1.0, f"Average LSE latency {avg_latency_ms:.3f} ms exceeds 1.0 ms limit"
+
 
 
 

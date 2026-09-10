@@ -225,7 +225,7 @@ def test_lse_query_latency_microsecond():
     iterations = 50000
     t0 = time.perf_counter()
     for _ in range(iterations):
-        move = graph.query_move(code, target="4a")
+        _ = graph.query_move(code, target="4a")
     t1 = time.perf_counter()
 
     avg_latency_us = ((t1 - t0) / iterations) * 1e6

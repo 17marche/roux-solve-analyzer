@@ -109,7 +109,7 @@ def fetch_or_load_html(solve_id: int, cache_dir: str, retries: int = 3, timeout:
                     f.write(content)
                 time.sleep(0.05)  # Polite throttle
                 return content
-        except Exception as e:
+        except Exception:
             if attempt == retries - 1:
                 return None
             time.sleep(0.5 * (attempt + 1))
