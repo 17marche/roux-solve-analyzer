@@ -53,6 +53,7 @@ from .lse_solver import (
 )
 from .fb_solver import FBSolution, FBSolver, solve_fb
 from .sb_solver import SBSolution, SBSolver, solve_sb, is_center_aligned_sb_solved
+from .scramble_solver import RouxScrambleSolver, FullSolveResult, solve_scramble
 from . import ida_star
 
 __all__ = [
@@ -106,6 +107,9 @@ __all__ = [
     "SBSolver",
     "solve_sb",
     "is_center_aligned_sb_solved",
+    "RouxScrambleSolver",
+    "FullSolveResult",
+    "solve_scramble",
     "ida_star",
 ]
 

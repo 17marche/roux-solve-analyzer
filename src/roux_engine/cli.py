@@ -9,6 +9,7 @@ from typing import Optional
 
 from .segmenter.segmenter import RouxSegmenter
 from .segmenter.models import SegmentedSolve
+from .solver.scramble_solver import FullSolveResult
 
 
 def format_solve_report(solve: SegmentedSolve) -> str:
@@ -421,24 +422,116 @@ def handle_generate_sb_pdb(argv: list[str]) -> int:
     return 0
 
 
-def main(argv: Optional[list[str]] = None) -> int:
-    if argv is None:
-        argv = sys.argv[1:]
+def format_solver_report(result: FullSolveResult) -> str:
+    """Formats a FullSolveResult into a clean terminal report."""
+    lines = []
+    lines.append("=" * 80)
+    lines.append("                      ROUX SCRAMBLE SOLVER REPORT")
+    lines.append("=" * 80)
+    lines.append(f"  Scramble: {result.scramble}")
+    lines.append(f"  Total:    {result.total_stm} STM moves [{result.duration_ms:.2f} ms]")
+    status_str = "VALID ROUX SOLVE" if result.is_valid else "INVALID / INCOMPLETE"
+    lines.append(f"  Status:   {status_str} (style={result.style})")
+    lines.append("-" * 80)
+    lines.append("Phase Breakdown:")
+    lines.append("-" * 80)
 
-    if argv and argv[0] == "generate-fb-pdb":
-        return handle_generate_fb_pdb(argv[1:])
+    # 0. Inspection
+    insp = result.fb.inspection_rotation if result.fb.inspection_rotation else "None"
+    lines.append(f"  • {'Inspection:':<22} {insp}")
+    lines.append("")
 
-    if argv and argv[0] == "generate-sb-pdb":
-        return handle_generate_sb_pdb(argv[1:])
+    # 1. FB
+    fb_moves_str = " ".join(result.fb.moves) if result.fb.moves else "0 moves"
+    fb_s = "s" if result.fb.move_count != 1 else ""
+    lines.append(f"  • {'First Block (FB):':<22} {fb_moves_str} // {result.fb.move_count} move{fb_s}")
+    lines.append(f"    - {'Orientation:':<20} {result.fb.orientation}")
+    lines.append("")
+
+    # 2. SB
+    sb_moves_str = " ".join(result.sb.moves) if result.sb.moves else "0 moves"
+    sb_s = "s" if result.sb.move_count != 1 else ""
+    style_label = "Free Blockbuilding" if result.sb.style == "free" else (
+        "Classical Standard" if result.sb.style == "classical" else "Square + Pair"
+    )
+    lines.append(f"  • {'Second Block (SB):':<22} {sb_moves_str} // {result.sb.move_count} move{sb_s}")
+    lines.append(f"    - {'Paradigm:':<20} {style_label}")
+    lines.append("")
+
+    # 3. CMLL
+    cmll_moves_str = " ".join(result.cmll_moves) if result.cmll_moves else "0 moves // Skip"
+    cmll_s = "s" if result.cmll_stm != 1 else ""
+    lines.append(f"  • {'CMLL:':<22} {cmll_moves_str} // {result.cmll_stm} move{cmll_s}")
+    lines.append(f"    - {'Group / Case:':<20} {result.cmll_group} ({result.cmll_case})")
+    lines.append(f"    - {'Pre-AUF:':<20} '{result.cmll_pre_auf}'" if result.cmll_pre_auf else f"    - {'Pre-AUF:':<20} None")
+    lines.append(f"    - {'Post-AUF:':<20} '{result.cmll_post_auf}'" if result.cmll_post_auf else f"    - {'Post-AUF:':<20} None")
+    lines.append("")
+
+    # 4. LSE
+    lse_moves_str = " ".join(result.lse.moves) if result.lse.moves else "0 moves // Skip"
+    lse_s = "s" if result.lse.move_count != 1 else ""
+    lines.append(f"  • {'Last Six Edges (LSE):':<22} {lse_moves_str} // {result.lse.move_count} move{lse_s}")
+    lines.append(f"    - {'Target:':<20} {result.lse.target}")
+    lines.append("-" * 80)
+
+    # Full Solution
+    lines.append("Full Solution:")
+    lines.append(f"  {result.full_moves_str}")
+    lines.append("-" * 80)
+
+    # 3D Interactive Visualization
+    lines.append("3D Interactive Visualization (alg.cubing.net):")
+    lines.append(f"  {result.alg_cubing_url}")
+    lines.append("=" * 80)
+    if result.style == "free":
+        lines.append("  💡 Tip: Run with `--style classical` for human-mimetic pair building!")
+        lines.append("=" * 80)
+    return "\n".join(lines)
+
+
+def handle_solve(argv: list[str]) -> int:
+    """Handles the roux solve subcommand."""
+    from .solver.scramble_solver import solve_scramble
 
     parser = argparse.ArgumentParser(
-        prog="roux",
+        prog="roux solve",
+        description="Solve a Rubik's Cube scramble from scratch using the 4-phase Roux method.",
+    )
+    parser.add_argument("-s", "--scramble", type=str, help="Scramble move sequence string")
+    parser.add_argument(
+        "--style",
+        type=str,
+        choices=["free", "classical", "square_pair"],
+        default="free",
+        help="Second Block solving paradigm: 'free' (optimal), 'classical' (human-style), or 'square_pair' (default: free)",
+    )
+    parser.add_argument("-j", "--json", action="store_true", help="Output raw JSON format")
+
+    args = parser.parse_args(argv)
+    scramble = args.scramble
+    if not scramble:
+        try:
+            scramble = input("Enter Scramble: ").strip()
+        except (EOFError, KeyboardInterrupt):
+            return 1
+
+    if not scramble:
+        print("Error: Scramble must be provided.", file=sys.stderr)
+        return 1
+
+    result = solve_scramble(scramble=scramble, style=args.style)
+    if args.json:
+        print(result.to_json(indent=2))
+    else:
+        print(format_solver_report(result))
+    return 0 if result.is_valid else 1
+
+
+def handle_analyze(argv: list[str]) -> int:
+    """Handles the roux analyze subcommand."""
+    parser = argparse.ArgumentParser(
+        prog="roux analyze",
         description="Roux Speedcube Solve Segmenter and Diagnostics CLI",
-        epilog=(
-            "Subcommands:\n"
-            "  generate-fb-pdb    Generate First Block Pattern Database\n"
-            "  generate-sb-pdb    Generate Second Block Pattern Databases"
-        ),
     )
     parser.add_argument("-s", "--scramble", type=str, help="Scramble move sequence")
     parser.add_argument("-sol", "--solution", type=str, help="Solution move sequence")
@@ -447,8 +540,6 @@ def main(argv: Optional[list[str]] = None) -> int:
     parser.add_argument("--color-neutral", action="store_true", help="Enable 24-orientation full color neutrality")
 
     args = parser.parse_args(argv)
-
-
     scramble = args.scramble
     solution = args.solution
     time_sec = args.time
@@ -468,7 +559,6 @@ def main(argv: Optional[list[str]] = None) -> int:
         except (EOFError, KeyboardInterrupt):
             return 1
 
-    # Optional time prompt if interactive (when time not given via CLI flag)
     if is_interactive and time_sec is None and sys.stdin.isatty() and not args.json:
         try:
             time_input = input("Enter Time in seconds (optional, press Enter to skip): ").strip()
@@ -493,6 +583,43 @@ def main(argv: Optional[list[str]] = None) -> int:
         print(format_solve_report(result))
 
     return 0 if result.is_valid else 1
+
+
+def main(argv: Optional[list[str]] = None) -> int:
+    if argv is None:
+        argv = sys.argv[1:]
+
+    if argv:
+        cmd = argv[0]
+        if cmd == "solve":
+            return handle_solve(argv[1:])
+        if cmd in ("analyze", "segment"):
+            return handle_analyze(argv[1:])
+        if cmd == "generate-fb-pdb":
+            return handle_generate_fb_pdb(argv[1:])
+        if cmd == "generate-sb-pdb":
+            return handle_generate_sb_pdb(argv[1:])
+        if cmd in ("-h", "--help"):
+            print("Usage: roux <subcommand> [options]\n")
+            print("Subcommands:")
+            print("  solve              Find an optimal Roux solution for a scramble")
+            print("  analyze            Segment and analyze a human Roux solve")
+            print("  generate-fb-pdb    Generate First Block Pattern Database")
+            print("  generate-sb-pdb    Generate Second Block Pattern Databases")
+            print("\nOptions:")
+            print("  -s, --scramble     Scramble move sequence")
+            print("  -sol, --solution   Solution move sequence (triggers analysis)")
+            print("  -h, --help         Show this help message")
+            return 0
+
+    # Smart default: If -sol passed, route to analyze; if only -s passed, route to solve.
+    if "-sol" in argv or "--solution" in argv:
+        return handle_analyze(argv)
+    if "-s" in argv or "--scramble" in argv:
+        return handle_solve(argv)
+
+    # Interactive prompt default: route to analyze
+    return handle_analyze(argv)
 
 
 if __name__ == "__main__":
