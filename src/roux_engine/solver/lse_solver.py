@@ -162,6 +162,7 @@ class LSESolution:
     move_count: int
     case_name: str
     center_state: str = "axis_aligned"
+    orientation: str = ""
 
 
 @dataclass(frozen=True)
@@ -173,6 +174,7 @@ class LSEPath:
     step_4c: LSESolution
     total_moves: list[str]
     total_move_count: int
+    orientation: str = ""
 
 
 class LSEGraph:
@@ -613,28 +615,109 @@ class LSEGraph:
 
 
 def solve_lse(
-    cube: CubeState,
+    scramble_or_cube: Optional[Union[str, CubeState]] = None,
     target: str = "all",
     allow_misoriented_centers: bool = False,
+    orientation: Optional[Union[str, RouxOrientation, CanonicalSymmetry, Tuple[Color, Color], Any]] = None,
+    *,
+    cube: Optional[Union[str, CubeState]] = None,
 ) -> list[LSESolution]:
     """Surfaces optimal paths for Step 4a, 4b, 4c, and 1-look global LSE."""
+    state = scramble_or_cube if scramble_or_cube is not None else cube
+    if state is None:
+        raise ValueError("Must provide either scramble_or_cube or cube")
+    cube_obj = CubeState().apply_moves(state) if isinstance(state, str) else state
+
+    resolved_ori, is_inspected = resolve_lse_orientation(cube_obj, orientation=orientation)
+    c_canon = conjugate_lse_cube(cube_obj, orientation=resolved_ori, is_inspected=is_inspected)
+
     graph = LSEGraph.get_instance()
-    return graph.solve(
-        cube,
+    canon_sols = graph.solve(
+        c_canon,
         target=target,
         allow_misoriented_centers=allow_misoriented_centers,
     )
 
+    translated_sols: list[LSESolution] = []
+    for s in canon_sols:
+        m_user = translate_lse_moves(s.moves, orientation=resolved_ori, is_inspected=is_inspected)
+        translated_sols.append(
+            LSESolution(
+                target=s.target,
+                moves=m_user,
+                move_count=len(m_user),
+                case_name=s.case_name,
+                center_state=s.center_state,
+                orientation=resolved_ori.rotations,
+            )
+        )
+    return translated_sols
 
-def solve_lse_paths(cube: CubeState) -> dict[str, LSEPath]:
+
+def solve_lse_paths(
+    scramble_or_cube: Optional[Union[str, CubeState]] = None,
+    orientation: Optional[Union[str, RouxOrientation, CanonicalSymmetry, Tuple[Color, Color], Any]] = None,
+    *,
+    cube: Optional[Union[str, CubeState]] = None,
+) -> dict[str, LSEPath]:
     """Solves and compares the 4 complete Roux LSE paths from Step 4a through 4c:
     - standard: Standard Roux (aligned standard EO -> 4b -> 4c)
     - eolr: EOLR Aligned (aligned EOLR -> 4b -> 4c)
     - eolr_misoriented: EOLR Misoriented (misaligned EOLR -> 4b -> 4c)
     - eolr_b: EOLR-b / 1-Look Global LSE (EOLR-b -> 4c)
     """
+    state = scramble_or_cube if scramble_or_cube is not None else cube
+    if state is None:
+        raise ValueError("Must provide either scramble_or_cube or cube")
+    cube_obj = CubeState().apply_moves(state) if isinstance(state, str) else state
+
+    resolved_ori, is_inspected = resolve_lse_orientation(cube_obj, orientation=orientation)
+    c_canon = conjugate_lse_cube(cube_obj, orientation=resolved_ori, is_inspected=is_inspected)
+
     graph = LSEGraph.get_instance()
-    return graph.solve_paths(cube)
+    canon_paths = graph.solve_paths(c_canon)
+
+    translated_paths: dict[str, LSEPath] = {}
+    for name, p in canon_paths.items():
+        m_4a = translate_lse_moves(p.step_4a.moves, orientation=resolved_ori, is_inspected=is_inspected)
+        m_4b = translate_lse_moves(p.step_4b.moves, orientation=resolved_ori, is_inspected=is_inspected)
+        m_4c = translate_lse_moves(p.step_4c.moves, orientation=resolved_ori, is_inspected=is_inspected)
+        m_tot = translate_lse_moves(p.total_moves, orientation=resolved_ori, is_inspected=is_inspected)
+
+        sol_4a = LSESolution(
+            target="4a",
+            moves=m_4a,
+            move_count=len(m_4a),
+            case_name=p.step_4a.case_name,
+            center_state=p.step_4a.center_state,
+            orientation=resolved_ori.rotations,
+        )
+        sol_4b = LSESolution(
+            target="4b",
+            moves=m_4b,
+            move_count=len(m_4b),
+            case_name=p.step_4b.case_name,
+            center_state=p.step_4b.center_state,
+            orientation=resolved_ori.rotations,
+        )
+        sol_4c = LSESolution(
+            target="4c",
+            moves=m_4c,
+            move_count=len(m_4c),
+            case_name=p.step_4c.case_name,
+            center_state=p.step_4c.center_state,
+            orientation=resolved_ori.rotations,
+        )
+        translated_paths[name] = LSEPath(
+            name=p.name,
+            step_4a=sol_4a,
+            step_4b=sol_4b,
+            step_4c=sol_4c,
+            total_moves=m_tot,
+            total_move_count=len(m_tot),
+            orientation=resolved_ori.rotations,
+        )
+    return translated_paths
 
 
 def resolve_lse_orientation(
