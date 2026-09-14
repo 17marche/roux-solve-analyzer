@@ -136,19 +136,24 @@ The development of the Roux AI Speedcube Coach is broken down into **6 sequentia
 ---
 
 ### Milestone 4: Empirical Transition Matrix & Biomechanical Flow Scorer
-* **Goal:** Model real-world physical fingertrick speeds, regrips, and execution flow from human smart-cube data.
+* **Goal:** Model real-world physical fingertrick speeds, regrips, and execution flow from human smart-cube data and kinematic hand mechanics.
+* **Core Metrics:**
+  * **Effective STM (E-STM):** Universal, skill-neutral metric incorporating kinematic regrips: `E_STM = STM + 2 * Regrip_Count`.
+  * **Kinematic Flow Efficiency:** Direct mechanical efficiency for candidate move sequences: `Kinematic_Flow_Efficiency = (STM / E_STM) * 100%`.
+  * **Stream Flow Index:** Scale-invariant flow for timestamped smart-cube streams factoring Turning Ratio (TR) and Rhythm Consistency (CV): `Stream_Flow_Index = 100 * TR * (1 / (1 + CV))`.
 * **Key Modules:**
-  * `src/roux_engine/ergonomics/transition_matrix.py`: Ingests and normalizes 2-gram bigram transition latencies for Two-Handed (2H) and One-Handed (OH) profiles.
-  * `src/roux_engine/ergonomics/regrip_detector.py`: Identifies physical regrips and execution pauses based on inter-move timestamps ($\Delta t$) and move mechanics ($R \rightarrow F$, $r2 \rightarrow U$).
-  * `src/roux_engine/ergonomics/hand_profile.py`: Conditions LSE advice based on user hand preference (`m_slice_hand`: `"right"` vs `"left"`).
-  * `src/roux_engine/ergonomics/macro_triggers.py`: Ergonomic scoring and expansion for **closed-loop macro triggers** ($R' F R F'$ sledgehammer, $F R' F' R$ hedge).
-    * *Rationale:* Human solvers frequently use $F$-slice triggers for edge orientation and pair insertion without whole-cube rotations ($y, x, z$). Because these macro triggers restore First Block at their conclusion, Milestone 4 models them as ergonomic compound transitions ($g\text{-cost} = 4$) that search can evaluate alongside pure $\langle R, U, r, M \rangle$.
-* **Reference Integration:** Ingest `onionhoney/roux-trainers/src/lib/two_gram_v1.json` (528 empirical transition pairs) as our calibrated baseline matrix.
+  * `src/roux_engine/ergonomics/models.py`: `FlowScore`, `GripState`, and `HandProfile` dataclasses.
+  * `src/roux_engine/ergonomics/transition_matrix.py`: Ingests and normalizes 2-gram bigram transition latencies for Two-Handed (2H) and One-Handed (OH) profiles, with `TransitionMatrixBuilder` ingestion.
+  * `src/roux_engine/ergonomics/grip_tracker.py`: 4-state right-hand kinematic DP model (`HOME`, `R_AWAY`, `R_PRIME_AWAY`, `R2_AWAY`) tracking forced regrips.
+  * `src/roux_engine/ergonomics/macro_triggers.py`: Ergonomic scoring and compound branching for closed-loop macro triggers ($R' F R F'$ Sledgehammer, $F R' F' R$ Hedge) preserving First Block ($g\text{-cost} = 4$).
+  * `src/roux_engine/ergonomics/flow_scorer.py`: Master `FlowScorer` evaluating E-STM, Flow Efficiency, and candidate re-ranking.
+  * `src/roux_engine/ergonomics/pause_detector.py`: Distinguishes execution pauses into cognitive hesitation vs. physical regrips.
+* **Reference Integration:** Ingest `onionhoney/roux-trainers/src/lib/two_gram_v1.json` (528 empirical transition pairs) as our calibrated 2H baseline matrix (`matrix_2h.json`).
 * **Testing & Verification:**
-  * Generate transition latency heatmaps comparing home-grip flow ($\langle R, U, r, M \rangle$) against regrip moves ($F, B, D, y$).
-  * Test candidate ranking: verify smooth fingertrick sequences score higher than awkward regrip sequences of equal movecount.
-  * Benchmark macro trigger ergonomics against equivalent rotation-heavy or pure generator equivalents.
-* **Acceptance Criteria:** Accurate detection of pauses and regrips across smart-cube solve streams; ergonomic scoring of compound macro triggers.
+  * Test candidate ranking: verify smooth home-grip lines achieve lower E-STM and higher Flow Efficiency than awkward regrip-heavy lines.
+  * Invariant verification: verify 100% of Second Block solutions with macro triggers preserve First Block.
+  * Scale-invariance: verify that scaling stream timestamps (e.g. 7s vs 14s) yields identical `Stream_Flow_Index` and `Turning_Ratio`.
+* **Acceptance Criteria:** Accurate detection of pauses and regrips across smart-cube solve streams; ergonomic scoring of compound macro triggers; integration with `FBSolver` top-$K$ re-ranking.
 
 ---
 
