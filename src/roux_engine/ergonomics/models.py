@@ -17,9 +17,17 @@ class GripState(str, Enum):
 @dataclass(frozen=True)
 class HandProfile:
     """Solver-specific physical biomechanics configuration."""
-    style: str = "2H"                   # "2H" or "OH"
+    solving_mode: str = "2H"            # "2H" or "OH" (canonical domain term from CONTEXT.md)
     m_slice_hand: str = "right"         # "right" or "left"
     dominant_hand: str = "right"        # "right" or "left"
+    style: str = ""                     # Backwards-compatible alias for solving_mode
+
+    def __post_init__(self) -> None:
+        if self.style and self.solving_mode == "2H" and self.style != "2H":
+            object.__setattr__(self, "solving_mode", self.style)
+        elif not self.style:
+            object.__setattr__(self, "style", self.solving_mode)
+
 
 
 @dataclass(frozen=True)

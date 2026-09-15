@@ -29,15 +29,18 @@ class TestHandProfile:
 
     def test_hand_profile_defaults(self):
         profile = HandProfile()
+        assert profile.solving_mode == "2H"
         assert profile.style == "2H"
         assert profile.m_slice_hand == "right"
         assert profile.dominant_hand == "right"
 
     def test_custom_hand_profile(self):
-        profile = HandProfile(style="OH", m_slice_hand="left", dominant_hand="left")
+        profile = HandProfile(solving_mode="OH", m_slice_hand="left", dominant_hand="left")
+        assert profile.solving_mode == "OH"
         assert profile.style == "OH"
         assert profile.m_slice_hand == "left"
         assert profile.dominant_hand == "left"
+
 
 
 class TestMoveAnalysis:

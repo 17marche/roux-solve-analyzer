@@ -103,6 +103,8 @@ class FlowScorer:
                 m if isinstance(m, MoveEvent) else MoveEvent(move=MoveParser.normalize_token(str(m)), raw_token=str(m))
                 for m in moves
             ]
+        # Filter out empty tokens
+        events = [e for e in events if e.move]
 
         # Raw STM: turns count as 1, whole-cube rotations (x, y, z) count as 0
         turning_events = [e for e in events if not e.move.startswith(("x", "y", "z"))]
@@ -136,7 +138,7 @@ class FlowScorer:
             per_move_analysis.append(
                 MoveAnalysis(
                     move=ev.move,
-                    grip_before=step.grip_during,
+                    grip_before=step.grip_before,
                     grip_after=step.grip_after,
                     regrip=step.regrip,
                     transition_effort=round(effort, 4),

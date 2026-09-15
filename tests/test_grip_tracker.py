@@ -174,4 +174,15 @@ class TestGripTrackerDPMinimization:
         assert res.regrip_count == 0
         assert res.final_grip == GripState.HOME
 
+    def test_initial_regrip_when_first_move_impossible_from_start_grip(self):
+        tracker = GripTracker()
+        # B is blocked from HOME. Solver must regrip immediately before move 0.
+        res = tracker.track("B", initial_grip=GripState.HOME)
+        assert res.regrip_count == 1
+        assert len(res.steps) == 1
+        assert res.steps[0].regrip
+        assert res.steps[0].grip_before == GripState.HOME
+        assert res.steps[0].grip_during in (GripState.R_AWAY, GripState.R_PRIME_AWAY)
+
+
 

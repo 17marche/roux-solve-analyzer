@@ -58,25 +58,11 @@ class GripTracker:
             GripState.R_PRIME_AWAY: GripState.R_AWAY,
             GripState.R2_AWAY: GripState.HOME,
         },
-        "r": {
-            GripState.HOME: GripState.R_AWAY,
-            GripState.R_AWAY: GripState.R2_AWAY,
-            GripState.R_PRIME_AWAY: GripState.HOME,
-            GripState.R2_AWAY: None,
-        },
-        "r'": {
-            GripState.HOME: GripState.R_PRIME_AWAY,
-            GripState.R_AWAY: GripState.HOME,
-            GripState.R_PRIME_AWAY: None,
-            GripState.R2_AWAY: GripState.R_AWAY,
-        },
-        "r2": {
-            GripState.HOME: GripState.R2_AWAY,
-            GripState.R_AWAY: GripState.R_PRIME_AWAY,
-            GripState.R_PRIME_AWAY: GripState.R_AWAY,
-            GripState.R2_AWAY: GripState.HOME,
-        },
     }
+    # Wide r turns follow the exact same right-hand wrist mechanics
+    _R_TRANSITIONS["r"] = _R_TRANSITIONS["R"]
+    _R_TRANSITIONS["r'"] = _R_TRANSITIONS["R'"]
+    _R_TRANSITIONS["r2"] = _R_TRANSITIONS["R2"]
 
     # Set of moves considered anatomically impossible or blocked from each grip state without regrip
     _BLOCKED_MOVES: Dict[GripState, Set[str]] = {
@@ -172,14 +158,11 @@ class GripTracker:
             GripState.R2_AWAY,
         ]
 
-        # current_dp[grip] = (cost, list_of_steps)
+        # Initial state: the hand starts in initial_grip before any moves
         current_dp: Dict[GripState, Tuple[float, List[GripStep]]] = {
             g: (float("inf"), []) for g in all_grips
         }
         current_dp[initial_grip] = (0.0, [])
-        for g in all_grips:
-            if g != initial_grip:
-                current_dp[g] = (self._REGRIP_BASE_COST + self._GRIP_STRAIN[g], [])
 
         for move in tokens:
             next_dp: Dict[GripState, Tuple[float, List[GripStep]]] = {
