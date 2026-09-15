@@ -138,8 +138,8 @@ The development of the Roux AI Speedcube Coach is broken down into **6 sequentia
 ### Milestone 4: Empirical Transition Matrix & Biomechanical Flow Scorer
 * **Goal:** Model real-world physical fingertrick speeds, regrips, and execution flow from human smart-cube data and kinematic hand mechanics.
 * **Core Metrics:**
-  * **Effective STM (E-STM):** Universal, skill-neutral metric incorporating kinematic regrips: `E_STM = STM + 2 * Regrip_Count`.
-  * **Kinematic Flow Efficiency:** Direct mechanical efficiency for candidate move sequences: `Kinematic_Flow_Efficiency = (STM / E_STM) * 100%`.
+  * **Effective STM (E-STM):** Universal, skill-neutral metric unifying transition effort and kinematic regrips: `E_STM = Sum(Transition_Effort) + (2.0 * Regrip_Count)`.
+  * **Kinematic Flow Efficiency:** Direct mechanical efficiency for candidate move sequences: `Kinematic_Flow_Efficiency = (Raw_STM / E_STM) * 100%`.
   * **Stream Flow Index:** Scale-invariant flow for timestamped smart-cube streams factoring Turning Ratio (TR) and Rhythm Consistency (CV): `Stream_Flow_Index = 100 * TR * (1 / (1 + CV))`.
 * **Key Modules:**
   * `src/roux_engine/ergonomics/models.py`: `FlowScore`, `GripState`, and `HandProfile` dataclasses.
