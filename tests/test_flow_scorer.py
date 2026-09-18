@@ -89,3 +89,77 @@ class TestFlowScorerStaticSequences:
         assert score.per_move_analysis[1].timestamp_ms == 250
         assert score.per_move_analysis[1].delta_ms == 150
 
+
+class TestFlowScorerStreamScoring:
+    """Seam 3.4: FlowScorer stream flow scoring, pace invariance, and pause breakdown."""
+
+    def test_score_stream_with_dict_stream(self):
+        scorer = FlowScorer()
+        stream = [
+            {"move": "R", "timestamp_ms": 100},
+            {"move": "U", "timestamp_ms": 220},
+            {"move": "R'", "timestamp_ms": 340},
+            {"move": "U'", "timestamp_ms": 460},
+        ]
+        score = scorer.score_stream(stream)
+        assert score.raw_stm == 4
+        assert score.turning_ratio is not None
+        assert score.rhythm_cv is not None
+        assert score.stream_flow_index is not None
+        assert score.turning_ratio == 1.0
+        assert score.rhythm_cv == 0.0
+        assert score.stream_flow_index == 100.0
+
+    def test_score_stream_pace_invariance(self):
+        scorer = FlowScorer()
+        stream_7s = [
+            {"move": "R", "timestamp_ms": 0},
+            {"move": "U", "timestamp_ms": 120},
+            {"move": "R'", "timestamp_ms": 240},
+            {"move": "U'", "timestamp_ms": 360},
+            {"move": "R", "timestamp_ms": 1200},  # Pause
+            {"move": "U", "timestamp_ms": 1320},
+        ]
+        stream_14s = [
+            {"move": "R", "timestamp_ms": 0},
+            {"move": "U", "timestamp_ms": 240},
+            {"move": "R'", "timestamp_ms": 480},
+            {"move": "U'", "timestamp_ms": 720},
+            {"move": "R", "timestamp_ms": 2400},  # Pause
+            {"move": "U", "timestamp_ms": 2640},
+        ]
+
+        score_7s = scorer.score_stream(stream_7s)
+        score_14s = scorer.score_stream(stream_14s)
+
+        assert score_7s.raw_stm == score_14s.raw_stm == 6
+        assert round(score_7s.turning_ratio, 4) == round(score_14s.turning_ratio, 4)
+        assert round(score_7s.rhythm_cv, 4) == round(score_14s.rhythm_cv, 4)
+        assert round(score_7s.stream_flow_index, 2) == round(score_14s.stream_flow_index, 2)
+
+    def test_score_detects_stream_automatically(self):
+        scorer = FlowScorer()
+        stream = [
+            {"move": "R", "timestamp_ms": 100},
+            {"move": "U", "timestamp_ms": 220},
+        ]
+        score = scorer.score(stream)
+        assert score.turning_ratio is not None
+        assert score.stream_flow_index is not None
+
+    def test_score_stream_pause_breakdown_and_per_move_analysis(self):
+        scorer = FlowScorer()
+        stream = [
+            {"move": "R", "timestamp_ms": 100},
+            {"move": "F", "timestamp_ms": 1100},  # 1000ms: R -> F forced regrip pause
+            {"move": "U", "timestamp_ms": 1220},  # 120ms
+        ]
+        score = scorer.score_stream(stream)
+        assert len(score.per_move_analysis) == 3
+        assert score.per_move_analysis[1].regrip is True
+        assert score.per_move_analysis[1].pause_type == "PHYSICAL_REGRIP"
+        assert score.pause_breakdown.get("PHYSICAL_REGRIP", 0) == 1
+
+
+
+

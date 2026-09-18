@@ -3,7 +3,7 @@
 from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 
 
 class GripState(str, Enum):
@@ -12,6 +12,18 @@ class GripState(str, Enum):
     R_AWAY = "R_AWAY"
     R_PRIME_AWAY = "R_PRIME_AWAY"
     R2_AWAY = "R2_AWAY"
+
+
+class PauseType(str, Enum):
+    """Classification of speedcube stream pauses and execution micro-pauses."""
+    COGNITIVE_HESITATION = "COGNITIVE_HESITATION"
+    PHYSICAL_REGRIP = "PHYSICAL_REGRIP"
+    EXECUTION_LOCKUP = "EXECUTION_LOCKUP"
+    # Canonical domain aliases from CONTEXT.md
+    COGNITIVE_MICRO_PAUSE = "COGNITIVE_HESITATION"
+
+    def __str__(self) -> str:
+        return self.value
 
 
 @dataclass(frozen=True)
@@ -40,6 +52,7 @@ class MoveAnalysis:
     transition_effort: float = 1.0
     timestamp_ms: Optional[int] = None
     delta_ms: Optional[int] = None
+    pause_type: Optional[PauseType] = None
 
 
 @dataclass(frozen=True)
@@ -54,3 +67,6 @@ class FlowScore:
     rhythm_cv: Optional[float] = None
     stream_flow_index: Optional[float] = None
     per_move_analysis: List[MoveAnalysis] = field(default_factory=list)
+    pause_breakdown: Dict[str, int] = field(default_factory=dict)
+
+
