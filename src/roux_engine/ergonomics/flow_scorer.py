@@ -6,8 +6,9 @@ from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Union
 
 from ..core.parser import MoveParser, MoveEvent
-from .models import GripState, MoveAnalysis, FlowScore
+from .models import GripState, MoveAnalysis, FlowScore, HandProfile
 from .grip_tracker import GripTracker, GripTrackingResult
+from .transition_matrix import TransitionMatrix
 
 
 class FlowScorer:
@@ -23,72 +24,30 @@ class FlowScorer:
     def __init__(
         self,
         grip_tracker: Optional[GripTracker] = None,
+        transition_matrix: Optional[TransitionMatrix] = None,
+        profile: Optional[HandProfile] = None,
         custom_matrix: Optional[Dict[str, float]] = None,
     ) -> None:
         self.grip_tracker = grip_tracker or GripTracker()
-        self._transitions: Dict[str, float] = {}
-        if custom_matrix is not None:
-            self._transitions = dict(custom_matrix)
+        self.profile = profile or (transition_matrix.profile if transition_matrix else HandProfile())
+        if transition_matrix is not None:
+            self.transition_matrix = transition_matrix
+        elif custom_matrix is not None:
+            self.transition_matrix = TransitionMatrix(
+                transitions=custom_matrix,
+                profile=self.profile,
+            )
         else:
-            self._load_default_transitions()
+            self.transition_matrix = TransitionMatrix.load(profile=self.profile)
 
-    def _load_default_transitions(self) -> None:
-        """Loads calibrated transition data from references or packaged data if present."""
-        search_paths = [
-            # Issue 02 target location
-            Path(__file__).resolve().parents[1] / "data" / "transitions" / "matrix_2h.json",
-            # Reference dataset from onionhoney/roux-trainers
-            Path(__file__).resolve().parents[3] / "references" / "roux_trainers" / "two_gram_v1.json",
-        ]
-        for path in search_paths:
-            if path.is_file():
-                try:
-                    with open(path, "r", encoding="utf-8") as f:
-                        raw = json.load(f)
-                    for k, v in raw.items():
-                        # Normalize into dimensionless effort multiplier
-                        val = float(v)
-                        # If values are already normalized near 1.0 vs raw latencies in seconds (~0.05 - 0.35s)
-                        multiplier = val if val > 0.5 and val < 5.0 and "matrix_2h" in str(path) else (val / self.BASELINE_LATENCY_SEC)
-                        self._transitions[k] = multiplier
-                    return
-                except Exception:
-                    continue
-
-        # Fallback calibrated defaults if no external file is found
-        self._transitions = {
-            "RU": 0.50, "UR'": 0.50, "R'U'": 0.49, "U'R": 1.08,
-            "RF": 3.03, "R2B": 1.30, "R'F": 0.50,
-            "rU": 0.50, "Ur'": 0.50, "r'U'": 0.50, "U'r": 0.88,
-            "MU": 0.60, "UM'": 0.50, "M'U'": 0.50, "U'M": 0.80,
-            "R": 0.80, "R'": 0.60, "R2": 1.00,
-            "U": 0.70, "U'": 0.80, "U2": 1.00,
-            "F": 1.00, "F'": 0.80, "F2": 1.50,
-            "B": 1.30, "B'": 1.50, "B2": 1.80,
-        }
+    @property
+    def _transitions(self) -> Dict[str, float]:
+        """Backwards-compatible access to underlying transitions mapping."""
+        return self.transition_matrix.transitions
 
     def get_transition_effort(self, prev_move: Optional[str], move: str) -> float:
         """Returns the dimensionless relative effort multiplier for a move or bigram transition."""
-        norm_curr = MoveParser.normalize_token(move)
-        if norm_curr.startswith(("x", "y", "z")):
-            return 0.0
-
-        if prev_move is None:
-            # Single move baseline lookup
-            if norm_curr in self._transitions:
-                return self._transitions[norm_curr]
-            return 1.0
-
-        norm_prev = MoveParser.normalize_token(prev_move)
-        if norm_prev.startswith(("x", "y", "z")):
-            return self.get_transition_effort(None, norm_curr)
-
-        pair_key = f"{norm_prev}{norm_curr}"
-        if pair_key in self._transitions:
-            return self._transitions[pair_key]
-
-        # Heuristic fallback if bigram not explicitly in matrix
-        return 1.0
+        return self.transition_matrix.get_effort(prev_move, move)
 
     def score_moves(
         self,

@@ -102,7 +102,11 @@ class MoveParser:
             if not raw_move:
                 continue
             
-            t_ms = item.get("timestamp_ms") or item.get("t_ms") or item.get("t")
+            t_ms = item.get("timestamp_ms")
+            if t_ms is None:
+                t_ms = item.get("t_ms")
+            if t_ms is None:
+                t_ms = item.get("t")
             if t_ms is not None:
                 t_ms = int(t_ms)
 

@@ -1,0 +1,253 @@
+"""Tests for TransitionMatrix and TransitionMatrixBuilder (Issue 02)."""
+
+import pytest
+from roux_engine.ergonomics.models import HandProfile
+from roux_engine.ergonomics.transition_matrix import TransitionMatrix, TransitionMatrixBuilder
+
+
+class TestTransitionMatrixLoadingAndBaselines:
+    """Seam 1: TransitionMatrix loading, metadata attribution, and baseline lookups."""
+
+    def test_load_2h_matrix_attribution_and_scale(self):
+        matrix = TransitionMatrix.load_2h()
+        assert matrix.profile.solving_mode == "2H"
+        # Explicit attribution to onionhoney/roux-trainers
+        assert "onionhoney" in matrix.metadata.get("attribution", "").lower()
+        assert "roux-trainers" in matrix.metadata.get("attribution", "").lower()
+
+        # At least 528 calibrated pairs from onionhoney
+        assert len(matrix.transitions) >= 528
+
+        # Fluid triggers should be sub-1.0 effort
+        effort_ru = matrix.get_effort("R", "U")
+        assert 0.45 < effort_ru < 0.55
+
+        # Awkward reaches should be > 2.5 effort
+        effort_rf = matrix.get_effort("R", "F")
+        assert effort_rf > 2.5
+
+        # Single move lookup
+        effort_r = matrix.get_effort(None, "R")
+        assert 0.6 < effort_r < 1.0
+
+    def test_load_oh_matrix_mechanics(self):
+        matrix_2h = TransitionMatrix.load_2h()
+        matrix_oh = TransitionMatrix.load_oh()
+        assert matrix_oh.profile.solving_mode == "OH"
+
+        # In OH, table and finger mechanics make F, B, and M moves significantly more costly than in 2H
+        assert matrix_oh.get_effort(None, "F") > matrix_2h.get_effort(None, "F")
+        assert matrix_oh.get_effort(None, "B") > matrix_2h.get_effort(None, "B")
+        assert matrix_oh.get_effort(None, "M") > matrix_2h.get_effort(None, "M")
+
+        # Fluid R/U triggers remain relatively low effort in OH
+        effort_ru_oh = matrix_oh.get_effort("R", "U")
+        assert effort_ru_oh < 1.0
+
+    def test_rotations_have_zero_effort_and_reset_context(self):
+        matrix = TransitionMatrix.load_2h()
+        assert matrix.get_effort(None, "x") == 0.0
+        assert matrix.get_effort("R", "y") == 0.0
+        assert matrix.get_effort("x", "U") == matrix.get_effort(None, "U")
+
+
+class TestMatrixQueryRobustnessAndFallback:
+    """Seam 2: Fallback interpolation, dictionary protocol, and robustness."""
+
+    def test_dict_like_access_and_membership(self):
+        matrix = TransitionMatrix.load_2h()
+        # String key
+        assert matrix["RU"] == matrix.get_effort("R", "U")
+        # Tuple key
+        assert matrix[("R", "U")] == matrix.get_effort("R", "U")
+        assert matrix[(None, "R")] == matrix.get_effort(None, "R")
+        assert matrix["R"] == matrix.get_effort(None, "R")
+
+        # In operator
+        assert "RU" in matrix
+        assert ("R", "U") in matrix
+        assert "R" in matrix
+        assert "NONEXISTENT_KEY" not in matrix
+
+        # Length
+        assert len(matrix) >= 528
+
+    def test_fallback_interpolation_unseen_bigrams(self):
+        matrix = TransitionMatrix.load_2h()
+        # Create an artificial transition not in the matrix
+        effort = matrix.get_effort("M2", "b'")
+        assert effort > 0.0
+        # Should not default to 0 or crash
+        assert isinstance(effort, float)
+        assert 0.5 <= effort <= 5.0
+        # Accessing via string key directly parses compound bigram
+        assert matrix["M2 b'"] == effort
+
+    def test_unknown_tokens_gracefully_default(self):
+        # Empty matrix with no transitions
+        sparse_matrix = TransitionMatrix(transitions={})
+        effort = sparse_matrix.get_effort("UNKNOWN_1", "UNKNOWN_2")
+        assert effort == 1.0
+        assert sparse_matrix.get_effort(None, "UNKNOWN") == 1.0
+
+
+class TestTransitionMatrixBuilderIngestionAndCalibration:
+    """Seam 3: Smart-cube stream ingestion, pause filtering, statistics, and matrix calibration."""
+
+    def test_ingest_smart_cube_stream_and_pause_filtering(self):
+        builder = TransitionMatrixBuilder(max_delta_ms=1500)
+        stream = [
+            {"move": "R", "timestamp_ms": 0},
+            {"move": "U", "timestamp_ms": 80},     # delta 80ms (RU)
+            {"move": "R'", "timestamp_ms": 160},   # delta 80ms (UR')
+            {"move": "U'", "timestamp_ms": 3000},  # delta 2840ms (> 1500ms micro-pause)
+            {"move": "R", "timestamp_ms": 3120},   # delta 120ms (U'R)
+        ]
+        ingested = builder.ingest_stream(stream)
+        assert ingested == 3  # RU, UR', and U'R (R'U' dropped due to micro-pause)
+
+        stats = builder.get_statistics()
+        assert "RU" in stats
+        assert stats["RU"]["count"] == 1
+        assert stats["RU"]["median_ms"] == 80.0
+
+        assert "UR'" in stats
+        assert stats["UR'"]["count"] == 1
+        assert stats["UR'"]["median_ms"] == 80.0
+
+        assert "U'R" in stats
+        assert stats["U'R"]["count"] == 1
+        assert stats["U'R"]["median_ms"] == 120.0
+
+        # Long pause between R' and U' must NOT be in bigram transitions
+        assert "R'U'" not in stats
+
+    def test_empirical_statistics_multiple_samples(self):
+        builder = TransitionMatrixBuilder()
+        # Ingest 3 distinct solves with "RU" transitions
+        builder.ingest_stream([{"move": "R", "t": 0}, {"move": "U", "t": 70}])
+        builder.ingest_stream([{"move": "R", "t": 100}, {"move": "U", "t": 190}])
+        builder.ingest_stream([{"move": "R", "t": 200}, {"move": "U", "t": 320}])
+
+        stats = builder.get_statistics()
+        ru_stats = stats["RU"]
+        assert ru_stats["count"] == 3
+        # deltas: 70, 90, 120
+        assert ru_stats["median_ms"] == 90.0
+        assert round(ru_stats["mean_ms"], 1) == 93.3
+        assert ru_stats["min_ms"] == 70.0
+        assert ru_stats["max_ms"] == 120.0
+        assert ru_stats["std_ms"] > 0.0
+
+    def test_build_calibrated_matrix_with_fallback(self):
+        builder = TransitionMatrixBuilder()
+        builder.ingest_stream([
+            {"move": "R", "timestamp_ms": 0},
+            {"move": "U", "timestamp_ms": 60},
+            {"move": "R'", "timestamp_ms": 110},
+        ])
+
+        # Calibrate with 100ms baseline (effort = 1.0 for 100ms)
+        matrix = builder.build(baseline_latency_ms=100.0)
+        assert isinstance(matrix, TransitionMatrix)
+
+        # RU latency = 60ms -> effort = 0.6
+        assert matrix["RU"] == 0.6
+        # UR' latency = 50ms -> effort = 0.5
+        assert matrix["UR'"] == 0.5
+
+        # Unobserved transitions must be inherited from default baseline matrix
+        assert "RF" in matrix
+        assert matrix["RF"] > 2.5
+        assert matrix.get_effort(None, "B") > 1.0
+
+        # Metadata records calibration details
+        assert matrix.metadata.get("calibrated_from_stream") is True
+        assert matrix.metadata.get("baseline_latency_ms") == 100.0
+
+
+class TestFlowScorerTransitionMatrixIntegration:
+    """Seam 4: FlowScorer integration with TransitionMatrix and HandProfile."""
+
+    def test_flow_scorer_evaluates_oh_profile_differently(self):
+        from roux_engine.ergonomics.flow_scorer import FlowScorer
+        scorer_2h = FlowScorer(profile=HandProfile(solving_mode="2H"))
+        scorer_oh = FlowScorer(profile=HandProfile(solving_mode="OH"))
+
+        # In OH, M-slice and F-turn heavy sequences are significantly harder
+        seq = "M U M' U2 M' U2 M"
+        score_2h = scorer_2h.score_moves(seq)
+        score_oh = scorer_oh.score_moves(seq)
+
+        assert score_2h.raw_stm == score_oh.raw_stm
+        assert score_oh.e_stm > score_2h.e_stm
+        assert score_oh.kinematic_efficiency < score_2h.kinematic_efficiency
+
+    def test_flow_scorer_accepts_transition_matrix_instance(self):
+        from roux_engine.ergonomics.flow_scorer import FlowScorer
+        custom_tm = TransitionMatrix(
+            transitions={"RU": 0.20, "UR'": 0.20, "R'U'": 0.20, "U'R": 0.20},
+            profile=HandProfile(solving_mode="2H"),
+        )
+        scorer = FlowScorer(transition_matrix=custom_tm)
+        score = scorer.score_moves("R U R' U'")
+        # With effort 0.20 per transition, E-STM should be very low
+        assert score.e_stm < 2.0
+
+
+class TestTransitionMatrixProperties:
+    """Property-based tests verifying invariant behaviors across domains."""
+
+    def test_all_base_moves_have_positive_finite_effort(self):
+        from roux_engine.core.moves import MOVES
+        matrix_2h = TransitionMatrix.load_2h()
+        matrix_oh = TransitionMatrix.load_oh()
+
+        for move in MOVES:
+            if move.startswith(("x", "y", "z")):
+                continue
+            effort_2h = matrix_2h.get_effort(None, move)
+            effort_oh = matrix_oh.get_effort(None, move)
+            assert effort_2h > 0.0
+            assert effort_oh > 0.0
+            assert effort_2h < 20.0
+            assert effort_oh < 20.0
+
+    def test_baseline_latency_scaling_property(self):
+        # Property: Doubling the baseline latency exactly halves calibrated efforts
+        builder = TransitionMatrixBuilder()
+        builder.ingest_stream([
+            {"move": "R", "t": 0},
+            {"move": "U", "t": 120},
+            {"move": "R'", "t": 200},
+        ])
+
+        m100 = builder.build(baseline_latency_ms=100.0)
+        m200 = builder.build(baseline_latency_ms=200.0)
+
+        assert abs(m100["RU"] - 2.0 * m200["RU"]) < 1e-4
+        assert abs(m100["UR'"] - 2.0 * m200["UR'"]) < 1e-4
+
+    def test_rotations_invariance_across_all_axes(self):
+        matrix = TransitionMatrix.load_2h()
+        rotations = ["x", "x'", "x2", "y", "y'", "y2", "z", "z'", "z2"]
+        for rot in rotations:
+            assert matrix.get_effort(None, rot) == 0.0
+            assert matrix.get_effort("R", rot) == 0.0
+            assert matrix.get_effort(rot, "U") == matrix.get_effort(None, "U")
+
+    def test_save_and_reload_matrix(self, tmp_path):
+        matrix = TransitionMatrix.load_2h()
+        target_file = tmp_path / "test_matrix.json"
+        matrix.save(target_file)
+        assert target_file.is_file()
+
+        loaded = TransitionMatrix.load(path=target_file)
+        assert loaded.profile.solving_mode == "2H"
+        assert loaded["RU"] == matrix["RU"]
+        assert len(loaded) == len(matrix)
+
+
+
+
+

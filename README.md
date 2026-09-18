@@ -1,7 +1,7 @@
 # Roux AI Speedcube Coach & Critique Engine (`roux-engine`)
 
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
-[![Tests](https://img.shields.io/badge/tests-446%20passing-brightgreen.svg)]()
+[![Tests](https://img.shields.io/badge/tests-492%20passing-brightgreen.svg)]()
 [![PDB Footprint](https://img.shields.io/badge/PDB%20memory-%3C%20600%20KB-orange.svg)]()
 [![Benchmark Superiority](https://img.shields.io/badge/human%20benchmark-99.4%25%20superiority-success.svg)]()
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
