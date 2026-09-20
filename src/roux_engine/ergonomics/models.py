@@ -69,4 +69,31 @@ class FlowScore:
     per_move_analysis: List[MoveAnalysis] = field(default_factory=list)
     pause_breakdown: Dict[str, int] = field(default_factory=dict)
 
+    def to_dict(self) -> Dict[str, Any]:
+        """Serializes FlowScore into a dictionary."""
+        return {
+            "raw_stm": self.raw_stm,
+            "e_stm": self.e_stm,
+            "kinematic_efficiency": self.kinematic_efficiency,
+            "regrip_count": self.regrip_count,
+            "macro_triggers": list(self.macro_triggers),
+            "turning_ratio": self.turning_ratio,
+            "rhythm_cv": self.rhythm_cv,
+            "stream_flow_index": self.stream_flow_index,
+            "pause_breakdown": dict(self.pause_breakdown),
+            "per_move_analysis": [
+                {
+                    "move": m.move,
+                    "grip_before": m.grip_before.value if hasattr(m.grip_before, "value") else str(m.grip_before),
+                    "grip_after": m.grip_after.value if hasattr(m.grip_after, "value") else str(m.grip_after),
+                    "regrip": m.regrip,
+                    "transition_effort": m.transition_effort,
+                    "timestamp_ms": m.timestamp_ms,
+                    "delta_ms": m.delta_ms,
+                    "pause_type": str(m.pause_type) if m.pause_type else None,
+                }
+                for m in self.per_move_analysis
+            ],
+        }
+
 

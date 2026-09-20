@@ -44,10 +44,11 @@ class TestMacroTriggerRegistryAndInvariant:
     def test_verify_first_block_preservation_rejects_non_preserving_triggers(self):
         # An invalid trigger that disturbs First Block
         bad_trigger = MacroTrigger(name="bad_trigger", moves=("R", "U", "R'", "F"))
-        # R U R' F alters F/U/R, but specifically does F alter FB?
-        # Wait, F alters DFL and FL if not restored, or let's test a move that directly moves L
+        assert verify_first_block_preservation(bad_trigger) is False
+
         disturbing_trigger = MacroTrigger(name="disturbing", moves=("L", "U", "L'", "U'"))
         assert verify_first_block_preservation(disturbing_trigger) is False
+
 
         # Single F turn disturbs FL and DFL
         single_f = MacroTrigger(name="single_f", moves=("F",))
@@ -125,7 +126,6 @@ class TestMacroTriggersSBSolver:
 
     def test_default_sb_solver_does_not_use_macro_triggers(self):
         from roux_engine.solver.sb_solver import solve_sb
-        from roux_engine.core.cube import CubeState
 
         c = CubeState().apply_moves("R2 R' F R F'")
         sols = solve_sb(c, k=3, style="free")
@@ -136,8 +136,6 @@ class TestMacroTriggersSBSolver:
 
     def test_sb_solver_discovers_hedge_and_preserves_fb(self):
         from roux_engine.solver.sb_solver import solve_sb
-        from roux_engine.core.cube import CubeState
-        from roux_engine.core.orientation import get_orientation
 
         ori = get_orientation("")
         # Scramble where pure <R, U, r, M> requires 7 moves, while Hedge + R2 solves in 5 moves
@@ -162,8 +160,6 @@ class TestMacroTriggersSBSolver:
 
     def test_sb_solver_discovers_sledgehammer_beating_pure_moves(self):
         from roux_engine.solver.sb_solver import solve_sb
-        from roux_engine.core.cube import CubeState
-        from roux_engine.core.orientation import get_orientation
 
         ori = get_orientation("")
         # Scramble where pure <R, U, r, M> requires 9 moves

@@ -91,7 +91,7 @@ This project is actively maintained and developed across modular milestones. The
 | **Milestone 3** | First Block (FB) PDB | 🟢 **Complete** | 5.32M state admissible PDB (2.54 MB packed) & $IDA^*$ candidate search. |
 | **Milestone 3.5** | Second Block (SB) PDB | 🟢 **Complete** | 1.08M state PDB (544 KB packed), Free / Classical / Square multi-paradigm solving. |
 | **Release v0.1** | End-to-End Scramble Solver | 🟢 **Complete** | Complete 4-phase generative heuristic solver CLI (`roux solve`) & 3D visualizer. |
-| **Milestone 4** | Biomechanical Transition Matrix | 🟡 **In Progress** | Smart-cube 2-gram transition latency matrices, regrip detection, and macro triggers. |
+| **Milestone 4** | Biomechanical Flow & Ergonomics | 🟢 **Complete** | Smart-cube 2-gram transition latency matrices, regrip detection, macro triggers, top-K re-ranking, and unified `roux flow` CLI. |
 | **Milestone 5** | Neural Policy Model | ⚪ **Planned** | Transformer/MLP behavioral cloning model trained on human tournament solves. |
 | **Milestone 6** | Unified Coaching Engine | ⚪ **Planned** | Diagnostic API (`analyze_solve()`) generating actionable advice & fluency critiques. |
 
@@ -145,7 +145,7 @@ Full Solution:
 --------------------------------------------------------------------------------
 3D Interactive Visualization (alg.cubing.net):
   https://alg.cubing.net/?setup=D2+F2+R2+B2+U+L2+U2+F2+D+R2+B2+R+B+U2+L+B2+D2+F+R2+B2&alg=D+r2+D+F+D%27+R2+B%27+R2+U%27+R+M+U+M2+U2+r%27+U+R%27+R+U2%27+R%27+U2%27+R%27+F+R+F%27+U%27+U%27+M+U+M%27+U+M%27+U+M+U2+M2
-================================================================================
+===============================================================================
   💡 Tip: Run with `--style classical` for human-mimetic pair building!
 ================================================================================
 ```
@@ -181,7 +181,26 @@ Partitions an existing human solve transcript into Roux phases with movecount br
 uv run roux analyze -s "<scramble>" -sol "<solution>" -t <solve_time_seconds>
 ```
 
-### 3. Generate Pattern Databases
+### 3. Biomechanical Flow & Ergonomics (`roux flow`)
+Evaluates Effective STM (E-STM), Kinematic Flow Efficiency, regrip count, macro triggers, and Bluetooth smart-cube rhythm consistency:
+```bash
+# Evaluate move sequence
+uv run roux flow "r U R' U2 R' U'"
+
+# Evaluate with One-Handed (OH) profile
+uv run roux flow "R U R' U'" --profile OH
+
+# Evaluate with personal tempo (seconds per move)
+uv run roux flow "R U R' U'" --tempo 0.25
+
+# Evaluate smart-cube timestamped stream from JSON file
+uv run roux flow path/to/stream.json
+
+# Output structured JSON
+uv run roux flow "r U R' U2 R' U'" --json
+```
+
+### 4. Generate Pattern Databases
 Generate the precomputed admissible lookup tables:
 ```bash
 # Generate 5.32M state First Block PDB (~2.54 MB)

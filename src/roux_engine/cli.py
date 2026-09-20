@@ -10,6 +10,7 @@ from typing import Optional
 from .segmenter.segmenter import RouxSegmenter
 from .segmenter.models import SegmentedSolve
 from .solver.scramble_solver import FullSolveResult
+from .ergonomics.models import FlowScore, HandProfile
 
 
 def format_solve_report(solve: SegmentedSolve) -> str:
@@ -585,6 +586,183 @@ def handle_analyze(argv: list[str]) -> int:
     return 0 if result.is_valid else 1
 
 
+def format_flow_report(
+    score: FlowScore,
+    profile: str = "2H",
+    tempo: Optional[float] = None,
+    source_name: Optional[str] = None,
+) -> str:
+    """Formats a FlowScore into a clean speedcubing terminal report."""
+    lines = []
+    lines.append("=" * 80)
+    lines.append("                      ROUX BIOMECHANICAL FLOW REPORT")
+    lines.append("=" * 80)
+    if source_name:
+        lines.append(f"  Source:     {source_name}")
+    lines.append(f"  Profile:    {profile} (solving mode)")
+    if tempo is not None:
+        tps_str = f" [{1.0 / tempo:.2f} TPS]" if tempo > 0 else ""
+        lines.append(f"  Tempo:      {tempo:.2f} sec/move{tps_str}")
+    lines.append(f"  Raw STM:    {score.raw_stm} moves")
+    lines.append(f"  Effective STM (E-STM):       {score.e_stm:.3f}")
+    lines.append(f"  Kinematic Flow Efficiency:   {score.kinematic_efficiency:.1f}%")
+    lines.append(f"  Regrip Count:                {score.regrip_count}")
+
+    if score.macro_triggers:
+        lines.append(f"  Macro Triggers:              {', '.join(score.macro_triggers)}")
+
+    if score.turning_ratio is not None or score.rhythm_cv is not None or score.stream_flow_index is not None:
+        lines.append("-" * 80)
+        lines.append("Stream Rhythm & Continuity:")
+        lines.append("-" * 80)
+        if score.turning_ratio is not None:
+            lines.append(f"  • Turning Ratio:             {score.turning_ratio * 100:.1f}% active turning")
+        if score.rhythm_cv is not None:
+            lines.append(f"  • Rhythm Consistency (CV):   {score.rhythm_cv:.3f}")
+        if score.stream_flow_index is not None:
+            lines.append(f"  • Stream Flow Index:         {score.stream_flow_index:.1f} / 100")
+        if score.pause_breakdown:
+            lines.append("  • Pause Breakdown:")
+            for ptype, count in score.pause_breakdown.items():
+                lines.append(f"    - {ptype:<24}: {count}")
+
+    if score.per_move_analysis:
+        lines.append("-" * 80)
+        lines.append("Per-Move Biomechanical Breakdown:")
+        lines.append("-" * 80)
+        lines.append(f"  {'#':<4} {'Move':<6} {'Grip (Before -> After)':<25} {'Regrip':<8} {'Effort':<8} {'Pause Type'}")
+        lines.append("  " + "-" * 76)
+        for idx, m in enumerate(score.per_move_analysis, 1):
+            grip_before_str = m.grip_before.value if hasattr(m.grip_before, "value") else str(m.grip_before)
+            grip_after_str = m.grip_after.value if hasattr(m.grip_after, "value") else str(m.grip_after)
+            grip_str = f"{grip_before_str} -> {grip_after_str}"
+            regrip_str = "YES" if m.regrip else "-"
+            pause_str = str(m.pause_type) if m.pause_type else "-"
+            lines.append(f"  {idx:<4} {m.move:<6} {grip_str:<25} {regrip_str:<8} {m.transition_effort:<8.2f} {pause_str}")
+
+    lines.append("=" * 80)
+    return "\n".join(lines)
+
+
+def handle_flow(argv: list[str]) -> int:
+    """Handles the roux flow subcommand."""
+    from .ergonomics.flow_scorer import FlowScorer
+
+    parser = argparse.ArgumentParser(
+        prog="roux flow",
+        description="Biomechanical flow, Effective STM (E-STM), and smart-cube stream rhythm evaluation.",
+    )
+    parser.add_argument(
+        "moves_or_file",
+        nargs="?",
+        type=str,
+        default=None,
+        help="Move sequence string, or path to a text file / JSON smart-cube stream",
+    )
+    parser.add_argument(
+        "-m", "--moves",
+        type=str,
+        default=None,
+        help="Move sequence string (alternative to positional argument)",
+    )
+    parser.add_argument(
+        "--profile",
+        type=str,
+        choices=["2H", "OH"],
+        default="2H",
+        help="Solving style profile: '2H' (Two-Handed) or 'OH' (One-Handed) (default: 2H)",
+    )
+    parser.add_argument(
+        "--tempo",
+        type=float,
+        default=None,
+        help="Personal seconds per move tempo (e.g. 0.25 for 4 TPS)",
+    )
+    parser.add_argument(
+        "-j", "--json",
+        action="store_true",
+        help="Output raw JSON format",
+    )
+
+    args = parser.parse_args(argv)
+    if args.moves is not None:
+        raw_input = args.moves
+    elif args.moves_or_file is not None:
+        raw_input = args.moves_or_file
+    else:
+        raw_input = None
+        if not sys.stdin.isatty():
+            try:
+                raw_input = sys.stdin.read().strip()
+            except (OSError, ValueError):
+                pass
+        if not raw_input:
+            try:
+                raw_input = input("Enter moves or JSON stream: ").strip()
+            except (EOFError, KeyboardInterrupt):
+                return 1
+
+    if not raw_input:
+        print("Error: Move sequence or file must be provided.", file=sys.stderr)
+        return 1
+
+
+    input_text = raw_input.strip()
+    source_name = None
+
+    p = Path(input_text)
+    if p.is_file():
+        source_name = str(p)
+        try:
+            input_text = p.read_text().strip()
+        except Exception as e:
+            print(f"Error reading file {p}: {e}", file=sys.stderr)
+            return 1
+
+    profile = HandProfile(solving_mode=args.profile)
+    scorer = FlowScorer(profile=profile)
+
+    is_stream = False
+    stream_data = None
+    if input_text.startswith("["):
+        try:
+            parsed_json = json.loads(input_text)
+            if isinstance(parsed_json, list):
+                is_stream = True
+                stream_data = parsed_json
+        except Exception:
+            pass
+
+    if is_stream and stream_data is not None:
+        score = scorer.score_stream(stream_data)
+    elif args.tempo is not None and args.tempo > 0:
+        tokens = input_text.split()
+        simulated_stream = [
+            {"move": tok, "timestamp_ms": int(i * args.tempo * 1000)}
+            for i, tok in enumerate(tokens)
+        ]
+        score = scorer.score_stream(simulated_stream)
+    else:
+        score = scorer.score_moves(input_text)
+
+    if args.json:
+        result_dict = score.to_dict()
+        result_dict["profile"] = args.profile
+        if args.tempo is not None:
+            result_dict["tempo"] = args.tempo
+        print(json.dumps(result_dict, indent=2))
+    else:
+        report = format_flow_report(
+            score,
+            profile=args.profile,
+            tempo=args.tempo,
+            source_name=source_name,
+        )
+        print(report)
+
+    return 0
+
+
 def main(argv: Optional[list[str]] = None) -> int:
     if argv is None:
         argv = sys.argv[1:]
@@ -595,6 +773,8 @@ def main(argv: Optional[list[str]] = None) -> int:
             return handle_solve(argv[1:])
         if cmd in ("analyze", "segment"):
             return handle_analyze(argv[1:])
+        if cmd == "flow":
+            return handle_flow(argv[1:])
         if cmd == "generate-fb-pdb":
             return handle_generate_fb_pdb(argv[1:])
         if cmd == "generate-sb-pdb":
@@ -604,6 +784,7 @@ def main(argv: Optional[list[str]] = None) -> int:
             print("Subcommands:")
             print("  solve              Find an optimal Roux solution for a scramble")
             print("  analyze            Segment and analyze a human Roux solve")
+            print("  flow               Evaluate biomechanical flow, E-STM, and stream rhythm")
             print("  generate-fb-pdb    Generate First Block Pattern Database")
             print("  generate-sb-pdb    Generate Second Block Pattern Databases")
             print("\nOptions:")
@@ -624,3 +805,4 @@ def main(argv: Optional[list[str]] = None) -> int:
 
 if __name__ == "__main__":
     sys.exit(main())
+

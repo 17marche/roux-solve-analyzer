@@ -9,7 +9,7 @@ Strictly excludes physical L turns per ADR-0001.
 from __future__ import annotations
 from dataclasses import dataclass
 import time
-from typing import Dict, List, Optional, Sequence, Set, Tuple, Union, NamedTuple
+from typing import Any, Dict, List, Optional, Sequence, Set, Tuple, Union, NamedTuple
 import numpy as np
 
 from ..core.constants import Color
@@ -124,6 +124,7 @@ class FBSolution:
     move_count: int
     orientation: str
     inspection_rotation: str
+    e_stm: Optional[float] = None
 
 
 class _SearchConfig(NamedTuple):
@@ -152,6 +153,14 @@ class FBSolver:
         self.corner_trans: Tuple[Tuple[int, ...], ...] = tuple(tuple(int(x) for x in row) for row in c_arr)
         self.edge_trans: Tuple[Tuple[int, ...], ...] = tuple(tuple(int(x) for x in row) for row in e_arr)
         self.allowed_moves: Tuple[Tuple[int, ...], ...] = _build_allowed_moves()
+        self._flow_scorer: Optional[Any] = None
+
+    @property
+    def flow_scorer(self) -> Any:
+        if self._flow_scorer is None:
+            from ..ergonomics.flow_scorer import FlowScorer
+            self._flow_scorer = FlowScorer()
+        return self._flow_scorer
 
     @classmethod
     def get_instance(cls) -> FBSolver:
@@ -159,6 +168,26 @@ class FBSolver:
         if cls._instance is None:
             cls._instance = cls()
         return cls._instance
+
+    @classmethod
+    def solve_fb(
+        cls,
+        scramble_or_cube: Union[str, CubeState],
+        k: int = 5,
+        orientation: Optional[Union[str, CanonicalSymmetry, Tuple[Color, Color]]] = None,
+        timeout_ms: Optional[float] = None,
+        rank_by: str = "stm",
+        top_k: Optional[int] = None,
+    ) -> List[FBSolution]:
+        """Convenience class method forwarding to get_instance().solve."""
+        return cls.get_instance().solve(
+            scramble_or_cube,
+            k=k,
+            orientation=orientation,
+            timeout_ms=timeout_ms,
+            rank_by=rank_by,
+            top_k=top_k,
+        )
 
     def _ida_search(
         self,
@@ -234,6 +263,8 @@ class FBSolver:
         k: int = 5,
         orientation: Optional[Union[str, CanonicalSymmetry, Tuple[Color, Color]]] = None,
         timeout_ms: Optional[float] = None,
+        rank_by: str = "stm",
+        top_k: Optional[int] = None,
     ) -> List[FBSolution]:
         """Discovers the top-K candidate First Block solutions using IDA* search.
 
@@ -242,10 +273,18 @@ class FBSolver:
             k: Number of candidate paths to return (default 5).
             orientation: Optional orientation filter (restricts to single color scheme).
             timeout_ms: Optional search timeout in milliseconds.
+            rank_by: Ranking metric for candidate solutions ("stm" or "e_stm").
+            top_k: Optional alias for k.
 
         Returns:
-            List of top-K FBSolution objects ranked by move count (ascending).
+            List of top-K FBSolution objects ranked by rank_by metric (ascending).
         """
+        if top_k is not None:
+            k = top_k
+
+        if rank_by not in ("stm", "e_stm"):
+            raise ValueError(f"rank_by must be 'stm' or 'e_stm', got {rank_by}")
+
         if isinstance(scramble_or_cube, str):
             cube = CubeState().apply_moves(scramble_or_cube)
         elif isinstance(scramble_or_cube, CubeState):
@@ -299,6 +338,7 @@ class FBSolver:
                                 move_count=0,
                                 orientation=cfg.orientation,
                                 inspection_rotation=cfg.rotation,
+                                e_stm=0.0 if rank_by == "e_stm" else None,
                             )
                         )
                         if len(solutions) >= k:
@@ -308,12 +348,32 @@ class FBSolver:
         candidates: List[FBSolution] = []
         seen_paths: Set[Tuple[str, Tuple[str, ...]]] = set()
 
+        pool_target = max(k * 4, 20) if rank_by == "e_stm" else k
+
         # 1. Search at optimal depth L
-        self._collect_candidates_at_depth(configs, min_h, k, candidates, seen_paths, deadline)
+        self._collect_candidates_at_depth(configs, min_h, pool_target, candidates, seen_paths, deadline)
 
         # 2. Expand search to depth L + 1 if fewer than k candidates found
         if len(candidates) < k:
-            self._collect_candidates_at_depth(configs, min_h + 1, k, candidates, seen_paths, deadline)
+            self._collect_candidates_at_depth(configs, min_h + 1, pool_target, candidates, seen_paths, deadline)
+
+        if rank_by == "e_stm":
+            scored_candidates: List[FBSolution] = []
+            for cand in candidates:
+                score = self.flow_scorer.score_moves(cand.moves)
+                scored_candidates.append(
+                    FBSolution(
+                        moves=cand.moves,
+                        move_count=cand.move_count,
+                        orientation=cand.orientation,
+                        inspection_rotation=cand.inspection_rotation,
+                        e_stm=score.e_stm,
+                    )
+                )
+            scored_candidates.sort(
+                key=lambda s: (s.e_stm if s.e_stm is not None else float("inf"), s.move_count)
+            )
+            return scored_candidates[:k]
 
         candidates.sort(key=lambda s: s.move_count)
         return candidates[:k]
@@ -324,6 +384,8 @@ def solve_fb(
     k: int = 5,
     orientation: Optional[Union[str, CanonicalSymmetry, Tuple[Color, Color]]] = None,
     timeout_ms: Optional[float] = 10.0,
+    rank_by: str = "stm",
+    top_k: Optional[int] = None,
 ) -> List[FBSolution]:
     """Solves First Block using Top-K Candidate Search IDA* heuristic search.
 
@@ -332,6 +394,8 @@ def solve_fb(
         k: Maximum candidate solutions to return (default 5).
         orientation: Optional color scheme or symmetry identifier to restrict search.
         timeout_ms: Optional search timeout in milliseconds (default 10ms).
+        rank_by: Ranking metric for candidate solutions ("stm" or "e_stm").
+        top_k: Optional alias for k.
 
     Returns:
         List of top-K FBSolution candidate move sequences.
@@ -342,6 +406,8 @@ def solve_fb(
         k=k,
         orientation=orientation,
         timeout_ms=timeout_ms,
+        rank_by=rank_by,
+        top_k=top_k,
     )
 
 
