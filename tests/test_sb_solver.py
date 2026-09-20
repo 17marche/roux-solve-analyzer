@@ -730,5 +730,75 @@ class TestSBSolverMasterMultiStyleAggregation:
         assert [s.moves for s in sols_str] == [s.moves for s in sols_cube]
 
 
+class TestSBMacroTriggersIntegration:
+    """Slice 9: Second Block Solver Closed-Loop Macro Triggers Integration."""
+
+    def test_solve_sb_allow_macro_triggers_false_by_default(self):
+        from roux_engine.core.cube import CubeState
+        from roux_engine.solver.sb_solver import solve_sb
+
+        c = CubeState().apply_moves("R2 R' F R F'")
+        sols = solve_sb(c, top_k=3, style="free")
+        assert len(sols) > 0
+        for s in sols:
+            assert "F" not in s.moves
+            assert "F'" not in s.moves
+
+    def test_solve_sb_with_macro_triggers_discovers_sledgehammer_and_hedge(self):
+        from roux_engine.core.cube import CubeState
+        from roux_engine.core.orientation import get_orientation
+        from roux_engine.solver.sb_solver import solve_sb, is_center_aligned_sb_solved
+
+        ori = get_orientation("")
+
+        # 1. Hedge case
+        c_hedge = CubeState().apply_moves("R2 R' F R F'")
+        assert ori.is_fb_solved(c_hedge)
+        sols_hedge = solve_sb(c_hedge, top_k=3, style="free", allow_macro_triggers=True)
+        assert any("F" in s.moves or "F'" in s.moves for s in sols_hedge)
+        for s in sols_hedge:
+            c_after = c_hedge.copy().apply_moves(" ".join(s.moves))
+            assert ori.is_fb_solved(c_after)
+            assert is_center_aligned_sb_solved(c_after, ori)
+
+        # 2. Sledgehammer case
+        c_sledge = CubeState().apply_moves("R2 F R' F' R")
+        assert ori.is_fb_solved(c_sledge)
+        sols_sledge = solve_sb(c_sledge, top_k=3, style="free", allow_macro_triggers=True)
+        assert any("F" in s.moves or "F'" in s.moves for s in sols_sledge)
+        for s in sols_sledge:
+            c_after = c_sledge.copy().apply_moves(" ".join(s.moves))
+            assert ori.is_fb_solved(c_after)
+            assert is_center_aligned_sb_solved(c_after, ori)
+
+    def test_macro_triggers_beat_pure_stm_cases(self):
+        from roux_engine.core.cube import CubeState
+        from roux_engine.solver.sb_solver import solve_sb
+
+        # Case where pure requires 7 moves, while macro requires 5 moves
+        c = CubeState().apply_moves("R2 R' F R F'")
+        sols_pure = solve_sb(c, top_k=1, style="free", allow_macro_triggers=False)
+        assert sols_pure[0].move_count >= 7
+
+        sols_macro = solve_sb(c, top_k=3, style="free", allow_macro_triggers=True)
+        macro_sol = [s for s in sols_macro if "F" in s.moves or "F'" in s.moves][0]
+        assert macro_sol.move_count <= 5
+        assert macro_sol.move_count < sols_pure[0].move_count
+
+    def test_solve_sb_all_style_with_macro_triggers(self):
+        from roux_engine.core.cube import CubeState
+        from roux_engine.solver.sb_solver import solve_sb, is_center_aligned_sb_solved
+        from roux_engine.core.orientation import get_orientation
+
+        ori = get_orientation("")
+        c = CubeState().apply_moves("R2 F R' F' R")
+        sols = solve_sb(c, top_k=5, style="all", allow_macro_triggers=True)
+        assert len(sols) > 0
+        for s in sols:
+            c_after = c.copy().apply_moves(" ".join(s.moves))
+            assert ori.is_fb_solved(c_after)
+            assert is_center_aligned_sb_solved(c_after, ori)
+
+
 
 

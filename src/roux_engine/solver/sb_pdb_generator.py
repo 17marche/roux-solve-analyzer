@@ -6,7 +6,7 @@ and serializes exact shortest distances into packed 4-bit nibbles.
 """
 
 from __future__ import annotations
-from typing import Optional, Union, Callable, Tuple, Sequence
+from typing import Optional, Union, Callable, Tuple, Sequence, List
 from pathlib import Path
 import time
 import numpy as np
@@ -369,6 +369,49 @@ def generate_all_sb_pdbs(
     return p_sb, p_rbs, p_rfs
 
 
+def build_macro_sb_transition_tables(
+    macro_moves_list: Sequence[Sequence[str]],
+) -> Tuple[Tuple[Tuple[int, ...], ...], Tuple[Tuple[int, ...], ...]]:
+    """Precomputes corner and edge transitions for closed-loop macro triggers."""
+    moves = ["R", "R'", "F", "F'"]
+    move_idx = {m: i for i, m in enumerate(moves)}
+    inv_cp, co_ori, inv_ep, eo_ori = _precompute_move_inverses(moves)
+
+    c_table: List[Tuple[int, ...]] = []
+    for c_idx in range(NUM_SB_CORNER_CONFIGS):
+        dfr, dfr_co, dbr, dbr_co = SBIndexer.decode_corners(c_idx)
+        row: List[int] = []
+        for macro_moves in macro_moves_list:
+            c_dfr, c_dfr_co, c_dbr, c_dbr_co = dfr, dfr_co, dbr, dbr_co
+            for m_name in macro_moves:
+                m = move_idx[m_name]
+                c_dfr = inv_cp[m][c_dfr]
+                c_dfr_co = (c_dfr_co + co_ori[m][c_dfr]) % 3
+                c_dbr = inv_cp[m][c_dbr]
+                c_dbr_co = (c_dbr_co + co_ori[m][c_dbr]) % 3
+            row.append(SBIndexer.encode_corners(c_dfr, c_dfr_co, c_dbr, c_dbr_co))
+        c_table.append(tuple(row))
+
+    e_table: List[Tuple[int, ...]] = []
+    for e_idx in range(NUM_SB_EDGE_CONFIGS):
+        dr, dr_eo, fr, fr_eo, br, br_eo = SBIndexer.decode_edges(e_idx)
+        row = []
+        for macro_moves in macro_moves_list:
+            c_dr, c_dr_eo, c_fr, c_fr_eo, c_br, c_br_eo = dr, dr_eo, fr, fr_eo, br, br_eo
+            for m_name in macro_moves:
+                m = move_idx[m_name]
+                c_dr = inv_ep[m][c_dr]
+                c_dr_eo = (c_dr_eo + eo_ori[m][c_dr]) % 2
+                c_fr = inv_ep[m][c_fr]
+                c_fr_eo = (c_fr_eo + eo_ori[m][c_fr]) % 2
+                c_br = inv_ep[m][c_br]
+                c_br_eo = (c_br_eo + eo_ori[m][c_br]) % 2
+            row.append(SBIndexer.encode_edges(c_dr, c_dr_eo, c_fr, c_fr_eo, c_br, c_br_eo))
+        e_table.append(tuple(row))
+
+    return tuple(c_table), tuple(e_table)
+
+
 __all__ = [
     "SB_MOVESET",
     "get_default_sb_pdb_path",
@@ -377,6 +420,7 @@ __all__ = [
     "build_sb_transition_tables",
     "build_rbs_transition_tables",
     "build_rfs_transition_tables",
+    "build_macro_sb_transition_tables",
     "generate_sb_pdb",
     "generate_rbs_pdb",
     "generate_rfs_pdb",

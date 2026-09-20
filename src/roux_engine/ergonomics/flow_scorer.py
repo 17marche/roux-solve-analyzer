@@ -10,6 +10,7 @@ from .models import GripState, MoveAnalysis, FlowScore, HandProfile
 from .grip_tracker import GripTracker, GripTrackingResult
 from .transition_matrix import TransitionMatrix
 from .pause_detector import StreamPauseDetector, StreamMetrics, PauseEvent
+from .macro_triggers import match_macro_triggers
 
 
 class FlowScorer:
@@ -83,6 +84,12 @@ class FlowScorer:
         tracking: GripTrackingResult = self.grip_tracker.track(events, initial_grip=initial_grip)
         pause_map: Dict[int, PauseEvent] = {p.move_index: p for p in metrics.pauses} if metrics else {}
 
+        macro_matches = match_macro_triggers(events)
+        macro_indices = set()
+        for mm in macro_matches:
+            for idx in range(mm.start_index, mm.end_index):
+                macro_indices.add(idx)
+
         per_move_analysis: List[MoveAnalysis] = []
         total_transition_effort = 0.0
         prev_move: Optional[str] = None
@@ -97,13 +104,14 @@ class FlowScorer:
 
             pause_event = pause_map.get(i)
             pause_type_enum = pause_event.pause_type if pause_event else None
+            is_regrip = False if i in macro_indices else step.regrip
 
             per_move_analysis.append(
                 MoveAnalysis(
                     move=ev.move,
                     grip_before=step.grip_before,
                     grip_after=step.grip_after,
-                    regrip=step.regrip,
+                    regrip=is_regrip,
                     transition_effort=round(effort, 4),
                     timestamp_ms=ev.timestamp_ms,
                     delta_ms=ev.delta_ms,
@@ -111,7 +119,7 @@ class FlowScorer:
                 )
             )
 
-        regrip_count = tracking.regrip_count
+        regrip_count = sum(1 for m in per_move_analysis if m.regrip)
         e_stm = total_transition_effort + (2.0 * regrip_count)
         kinematic_efficiency = (raw_stm / e_stm * 100.0) if e_stm > 0 else 0.0
 
@@ -120,6 +128,7 @@ class FlowScorer:
             e_stm=round(e_stm, 4),
             kinematic_efficiency=round(kinematic_efficiency, 2),
             regrip_count=regrip_count,
+            macro_triggers=[m.trigger.name for m in macro_matches],
             turning_ratio=metrics.turning_ratio if metrics else None,
             rhythm_cv=metrics.rhythm_cv if metrics else None,
             stream_flow_index=metrics.stream_flow_index if metrics else None,

@@ -31,6 +31,8 @@ _SB_MOVE_FAMILIES: Tuple[int, ...] = (
 )
 
 _SB_MOVE_INDEX: dict[str, int] = {m: i for i, m in enumerate(SB_MOVESET)}
+_PREV_M_AFTER_HEDGE: int = -2
+_ALLOWED_AFTER_HEDGE: Tuple[int, ...] = tuple(i for i, m in enumerate(SB_MOVESET) if m != "R'")
 
 
 def _build_sb_allowed_moves() -> Tuple[Tuple[int, ...], ...]:
@@ -177,6 +179,7 @@ from ..segmenter.cmll_classifier import CMLLClassifier
 from .sb_indexer import (
     SBIndexer,
     NUM_SB_CORNER_CONFIGS,
+    NUM_SB_EDGE_CONFIGS,
     RightBackSquareIndexer,
     NUM_RBS_CORNER_CONFIGS,
     RightFrontSquareIndexer,
@@ -187,7 +190,13 @@ from .sb_pdb_generator import (
     build_sb_transition_tables,
     build_rbs_transition_tables,
     build_rfs_transition_tables,
+    build_macro_sb_transition_tables,
     _precompute_move_inverses,
+)
+from ..ergonomics.macro_triggers import (
+    MacroTrigger,
+    SLEDGEHAMMER,
+    HEDGE,
 )
 from .symmetry import (
     CanonicalSymmetry,
@@ -243,6 +252,11 @@ class SBSolver:
         self.rfs_edge_trans: Tuple[Tuple[int, ...], ...] = tuple(tuple(int(x) for x in row) for row in rfs_e_arr)
         self.dr_trans: Tuple[Tuple[int, ...], ...] = _build_dr_transitions()
 
+        self.macro_triggers: Tuple[MacroTrigger, ...] = (SLEDGEHAMMER, HEDGE)
+        self.macro_corner_trans, self.macro_edge_trans = build_macro_sb_transition_tables(
+            [t.moves for t in self.macro_triggers]
+        )
+
     @classmethod
     def get_instance(cls) -> SBSolver:
         if cls._instance is None:
@@ -268,32 +282,70 @@ class SBSolver:
         solutions: List[Tuple[str, ...]],
         needed: int,
         deadline: Optional[float],
+        allow_macro_triggers: bool = False,
+        macros_used: int = 0,
     ) -> None:
         """Recursive depth-bounded search with exact PDB pruning and center alignment."""
         if deadline is not None and time.perf_counter() > deadline:
             return
 
         state_idx = e_idx * NUM_SB_CORNER_CONFIGS + c_idx
-        h = self._heuristic(state_idx, center_off)
+        h_pure = self._heuristic(state_idx, center_off)
+        h_eff = h_pure if (not allow_macro_triggers or macros_used >= 1) else max(0, h_pure - 4)
 
-        if g + h > max_depth:
+        if g + h_eff > max_depth:
             return
 
-        if h == 0:
+        if h_pure == 0:
             if g == max_depth:
                 solutions.append(tuple(path))
             return
 
-        next_moves = range(len(SB_MOVESET)) if prev_m == -1 else self.allowed_moves[prev_m]
+        next_moves: Sequence[int]
+        if prev_m == -1:
+            next_moves = range(len(SB_MOVESET))
+        elif prev_m == _PREV_M_AFTER_HEDGE:
+            next_moves = _ALLOWED_AFTER_HEDGE
+        else:
+            next_moves = self.allowed_moves[prev_m]
+
         for m in next_moves:
             nc = self.corner_trans[c_idx][m]
             ne = self.edge_trans[e_idx][m]
             ncent = self.center_trans[center_off][m]
             path.append(SB_MOVESET[m])
-            self._ida_search(nc, ne, ncent, g + 1, max_depth, m, path, solutions, needed, deadline)
+            self._ida_search(
+                nc, ne, ncent, g + 1, max_depth, m, path, solutions, needed, deadline,
+                allow_macro_triggers=allow_macro_triggers,
+                macros_used=macros_used,
+            )
             path.pop()
             if len(solutions) >= needed:
                 return
+
+        if allow_macro_triggers and macros_used < 1 and g + 4 <= max_depth:
+            for macro_idx, trig in enumerate(self.macro_triggers):
+                # Branch pruning: Sledgehammer starts with R'.
+                # Prune if preceded by R/r turns or Hedge (which ends in R).
+                if trig.name == "sledgehammer" and (
+                    prev_m == _PREV_M_AFTER_HEDGE
+                    or (prev_m != -1 and _SB_MOVE_FAMILIES[prev_m] in (0, 2))
+                ):
+                    continue
+                nc = self.macro_corner_trans[c_idx][macro_idx]
+                ne = self.macro_edge_trans[e_idx][macro_idx]
+                path.extend(trig.moves)
+                # Next prev_m: Sledgehammer ends in F' -> not in SB_MOVESET (-1)
+                # Hedge ends in R -> _PREV_M_AFTER_HEDGE (forbids immediate R' cancellation)
+                next_pm = _PREV_M_AFTER_HEDGE if trig.name == "hedge" else -1
+                self._ida_search(
+                    nc, ne, center_off, g + 4, max_depth, next_pm, path, solutions, needed, deadline,
+                    allow_macro_triggers=allow_macro_triggers,
+                    macros_used=macros_used + 1,
+                )
+                del path[-4:]
+                if len(solutions) >= needed:
+                    return
 
     def _build_solution(
         self,
@@ -450,6 +502,7 @@ class SBSolver:
         k: int,
         order: str,
         deadline: Optional[float] = None,
+        allow_macro_triggers: bool = False,
     ) -> List[SBSolution]:
         """Solves SB using Square + Pair paradigm for a specific pair order."""
         if order == "back_first":
@@ -492,7 +545,7 @@ class SBSolver:
                         )
                     )
             else:
-                depth = h2
+                depth = max(0, h2 - 4) if allow_macro_triggers else h2
                 stage2_sols: List[Tuple[str, ...]] = []
                 while len(stage2_sols) < k and depth <= 15:
                     if deadline is not None and time.perf_counter() > deadline:
@@ -500,7 +553,8 @@ class SBSolver:
                     needed = k - len(stage2_sols)
                     depth_sols: List[Tuple[str, ...]] = []
                     self._ida_search(
-                        c2, e2, cent2, 0, depth, prev_m, [], depth_sols, needed, deadline
+                        c2, e2, cent2, 0, depth, prev_m, [], depth_sols, needed, deadline,
+                        allow_macro_triggers=allow_macro_triggers,
                     )
                     for p2 in depth_sols:
                         if p2 not in stage2_sols:
@@ -541,20 +595,24 @@ class SBSolver:
         k: int = 5,
         order: str = "best",
         deadline: Optional[float] = None,
+        allow_macro_triggers: bool = False,
     ) -> List[SBSolution]:
         """Solves SB using Square + Pair paradigm (best, back_first, or front_first)."""
         if order in ("back_first", "front_first"):
             return self._solve_square_pair_order(
                 base_cube, ori, sym, uninspected, ori_str,
-                placement, c_idx, e_idx, center_off, k, order, deadline
+                placement, c_idx, e_idx, center_off, k, order, deadline,
+                allow_macro_triggers=allow_macro_triggers,
             )
         sols_back = self._solve_square_pair_order(
             base_cube, ori, sym, uninspected, ori_str,
-            placement, c_idx, e_idx, center_off, k, "back_first", deadline
+            placement, c_idx, e_idx, center_off, k, "back_first", deadline,
+            allow_macro_triggers=allow_macro_triggers,
         )
         sols_front = self._solve_square_pair_order(
             base_cube, ori, sym, uninspected, ori_str,
-            placement, c_idx, e_idx, center_off, k, "front_first", deadline
+            placement, c_idx, e_idx, center_off, k, "front_first", deadline,
+            allow_macro_triggers=allow_macro_triggers,
         )
         combined: List[SBSolution] = []
         seen: Set[Tuple[str, ...]] = set()
@@ -618,6 +676,7 @@ class SBSolver:
         k: int,
         order: str,
         deadline: Optional[float] = None,
+        allow_macro_triggers: bool = False,
     ) -> List[SBSolution]:
         """Solves SB using Classical Standard paradigm (DR -> Pair 1 -> Pair 2)."""
         dr_paths = self._search_dr(placement.dr_slot, placement.dr_eo, k=min(k, 3), deadline=deadline)
@@ -674,7 +733,7 @@ class SBSolver:
                             )
                         )
                 else:
-                    depth = h3
+                    depth = max(0, h3 - 4) if allow_macro_triggers else h3
                     stage3_sols: List[Tuple[str, ...]] = []
                     while len(stage3_sols) < k and depth <= 15:
                         if deadline is not None and time.perf_counter() > deadline:
@@ -682,7 +741,8 @@ class SBSolver:
                         needed = k - len(stage3_sols)
                         depth_sols: List[Tuple[str, ...]] = []
                         self._ida_search(
-                            c2, e2, cent2, 0, depth, prev_m, [], depth_sols, needed, deadline
+                            c2, e2, cent2, 0, depth, prev_m, [], depth_sols, needed, deadline,
+                            allow_macro_triggers=allow_macro_triggers,
                         )
                         for p3 in depth_sols:
                             if p3 not in stage3_sols:
@@ -723,20 +783,24 @@ class SBSolver:
         k: int = 5,
         order: str = "best",
         deadline: Optional[float] = None,
+        allow_macro_triggers: bool = False,
     ) -> List[SBSolution]:
         """Solves SB using Classical Standard paradigm (best, back_first, or front_first)."""
         if order in ("back_first", "front_first"):
             return self._solve_classical_order(
                 base_cube, ori, sym, uninspected, ori_str,
-                placement, c_idx, e_idx, center_off, k, order, deadline
+                placement, c_idx, e_idx, center_off, k, order, deadline,
+                allow_macro_triggers=allow_macro_triggers,
             )
         sols_back = self._solve_classical_order(
             base_cube, ori, sym, uninspected, ori_str,
-            placement, c_idx, e_idx, center_off, k, "back_first", deadline
+            placement, c_idx, e_idx, center_off, k, "back_first", deadline,
+            allow_macro_triggers=allow_macro_triggers,
         )
         sols_front = self._solve_classical_order(
             base_cube, ori, sym, uninspected, ori_str,
-            placement, c_idx, e_idx, center_off, k, "front_first", deadline
+            placement, c_idx, e_idx, center_off, k, "front_first", deadline,
+            allow_macro_triggers=allow_macro_triggers,
         )
         combined: List[SBSolution] = []
         seen: Set[Tuple[str, ...]] = set()
@@ -759,6 +823,7 @@ class SBSolver:
         center_off: int,
         k: int = 5,
         deadline: Optional[float] = None,
+        allow_macro_triggers: bool = False,
     ) -> List[SBSolution]:
         """Direct Center-Aligned IDA* heuristic search to full Second Block."""
         state_idx = e_idx * NUM_SB_CORNER_CONFIGS + c_idx
@@ -779,7 +844,7 @@ class SBSolver:
             return [sol]
 
         # Top-K Candidate Search
-        depth = h0
+        depth = max(0, h0 - 4) if allow_macro_triggers else h0
         sols: List[Tuple[str, ...]] = []
         seen_paths: Set[Tuple[str, ...]] = set()
 
@@ -789,7 +854,8 @@ class SBSolver:
             needed = k - len(sols)
             depth_sols: List[Tuple[str, ...]] = []
             self._ida_search(
-                c_idx, e_idx, center_off, 0, depth, -1, [], depth_sols, needed, deadline
+                c_idx, e_idx, center_off, 0, depth, -1, [], depth_sols, needed, deadline,
+                allow_macro_triggers=allow_macro_triggers,
             )
             for path_tuple in depth_sols:
                 if path_tuple not in seen_paths:
@@ -829,19 +895,23 @@ class SBSolver:
         k: int = 5,
         order: str = "best",
         deadline: Optional[float] = None,
+        allow_macro_triggers: bool = False,
     ) -> List[SBSolution]:
         """Aggregates candidate solutions across all Second Block search paradigms."""
         sols_free = self._solve_free(
             base_cube, ori, sym, uninspected, ori_str,
-            c_idx, e_idx, center_off, k, deadline
+            c_idx, e_idx, center_off, k, deadline,
+            allow_macro_triggers=allow_macro_triggers,
         )
         sols_sq = self._solve_square_pair(
             base_cube, ori, sym, uninspected, ori_str,
-            placement, c_idx, e_idx, center_off, k, order, deadline
+            placement, c_idx, e_idx, center_off, k, order, deadline,
+            allow_macro_triggers=allow_macro_triggers,
         )
         sols_cl = self._solve_classical(
             base_cube, ori, sym, uninspected, ori_str,
-            placement, c_idx, e_idx, center_off, k, order, deadline
+            placement, c_idx, e_idx, center_off, k, order, deadline,
+            allow_macro_triggers=allow_macro_triggers,
         )
 
         style_priority = {"classical": 0, "square_pair": 1, "free": 2}
@@ -862,6 +932,7 @@ class SBSolver:
         order: str = "best",
         orientation: Optional[Union[str, CanonicalSymmetry, Tuple[Color, Color]]] = None,
         timeout_ms: Optional[float] = None,
+        allow_macro_triggers: bool = False,
     ) -> List[SBSolution]:
         """Discovers top-K candidate Second Block solutions using IDA* search.
 
@@ -872,6 +943,7 @@ class SBSolver:
             order: Sub-step ordering ("best", "back_first", "front_first").
             orientation: Optional orientation filter (restricts to single color scheme).
             timeout_ms: Optional search timeout in milliseconds.
+            allow_macro_triggers: Whether to evaluate 4-STM compound moves (Sledgehammer, Hedge).
 
         Returns:
             List of top-K SBSolution candidate move sequences.
@@ -980,6 +1052,7 @@ class SBSolver:
                 k=k,
                 order=order,
                 deadline=deadline,
+                allow_macro_triggers=allow_macro_triggers,
             )
         elif style == "square_pair":
             return self._solve_square_pair(
@@ -995,6 +1068,7 @@ class SBSolver:
                 k=k,
                 order=order,
                 deadline=deadline,
+                allow_macro_triggers=allow_macro_triggers,
             )
         elif style == "classical":
             return self._solve_classical(
@@ -1010,6 +1084,7 @@ class SBSolver:
                 k=k,
                 order=order,
                 deadline=deadline,
+                allow_macro_triggers=allow_macro_triggers,
             )
         else:
             return self._solve_free(
@@ -1023,6 +1098,7 @@ class SBSolver:
                 center_off=center_off,
                 k=k,
                 deadline=deadline,
+                allow_macro_triggers=allow_macro_triggers,
             )
 
 
@@ -1034,6 +1110,7 @@ def solve_sb(
     order: str = "best",
     orientation: Optional[Union[str, CanonicalSymmetry, Tuple[Color, Color]]] = None,
     timeout_ms: Optional[float] = None,
+    allow_macro_triggers: bool = False,
 ) -> List[SBSolution]:
     """Solves Second Block using Center-Aligned IDA* heuristic search.
 
@@ -1045,6 +1122,7 @@ def solve_sb(
         order: Pair ordering ("best", "back_first", "front_first").
         orientation: Optional First Block orientation filter.
         timeout_ms: Optional search timeout in milliseconds.
+        allow_macro_triggers: Whether to evaluate 4-STM compound moves (Sledgehammer, Hedge).
 
     Returns:
         List of top-K SBSolution candidate move sequences.
@@ -1058,6 +1136,7 @@ def solve_sb(
         order=order,
         orientation=orientation,
         timeout_ms=timeout_ms,
+        allow_macro_triggers=allow_macro_triggers,
     )
 
 
