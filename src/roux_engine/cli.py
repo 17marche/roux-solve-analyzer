@@ -610,6 +610,8 @@ def format_flow_report(
 
     if score.macro_triggers:
         lines.append(f"  Macro Triggers:              {', '.join(score.macro_triggers)}")
+    else:
+        lines.append("  Macro Triggers:              None")
 
     if score.turning_ratio is not None or score.rhythm_cv is not None or score.stream_flow_index is not None:
         lines.append("-" * 80)
@@ -734,7 +736,16 @@ def handle_flow(argv: list[str]) -> int:
             pass
 
     if is_stream and stream_data is not None:
-        score = scorer.score_stream(stream_data)
+        if args.tempo is not None and args.tempo > 0:
+            from .ergonomics.pause_detector import StreamPauseDetector
+            detector = StreamPauseDetector(
+                grip_tracker=scorer.grip_tracker,
+                transition_matrix=scorer.transition_matrix,
+                pause_threshold_ms=args.tempo * 1000.0,
+            )
+            score = scorer.score_stream(stream_data, pause_detector=detector)
+        else:
+            score = scorer.score_stream(stream_data)
     elif args.tempo is not None and args.tempo > 0:
         tokens = input_text.split()
         simulated_stream = [

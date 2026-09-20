@@ -135,7 +135,7 @@ The development of the Roux AI Speedcube Coach is broken down into **6 sequentia
 
 ---
 
-### Milestone 4: Empirical Transition Matrix & Biomechanical Flow Scorer
+### Milestone 4: Empirical Transition Matrix & Biomechanical Flow Scorer [COMPLETED]
 * **Goal:** Model real-world physical fingertrick speeds, regrips, and execution flow from human smart-cube data and kinematic hand mechanics.
 * **Core Metrics:**
   * **Effective STM (E-STM):** Universal, skill-neutral metric unifying transition effort and kinematic regrips: `E_STM = Sum(Transition_Effort) + (2.0 * Regrip_Count)`.

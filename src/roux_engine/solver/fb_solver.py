@@ -9,7 +9,7 @@ Strictly excludes physical L turns per ADR-0001.
 from __future__ import annotations
 from dataclasses import dataclass
 import time
-from typing import Any, Dict, List, Optional, Sequence, Set, Tuple, Union, NamedTuple
+from typing import Any, Dict, List, Literal, Optional, Sequence, Set, Tuple, Union, NamedTuple
 import numpy as np
 
 from ..core.constants import Color
@@ -176,7 +176,7 @@ class FBSolver:
         k: int = 5,
         orientation: Optional[Union[str, CanonicalSymmetry, Tuple[Color, Color]]] = None,
         timeout_ms: Optional[float] = None,
-        rank_by: str = "stm",
+        rank_by: Literal["stm", "e_stm"] = "stm",
         top_k: Optional[int] = None,
     ) -> List[FBSolution]:
         """Convenience class method forwarding to get_instance().solve."""
@@ -263,7 +263,7 @@ class FBSolver:
         k: int = 5,
         orientation: Optional[Union[str, CanonicalSymmetry, Tuple[Color, Color]]] = None,
         timeout_ms: Optional[float] = None,
-        rank_by: str = "stm",
+        rank_by: Literal["stm", "e_stm"] = "stm",
         top_k: Optional[int] = None,
     ) -> List[FBSolution]:
         """Discovers the top-K candidate First Block solutions using IDA* search.
@@ -353,9 +353,10 @@ class FBSolver:
         # 1. Search at optimal depth L
         self._collect_candidates_at_depth(configs, min_h, pool_target, candidates, seen_paths, deadline)
 
-        # 2. Expand search to depth L + 1 if fewer than k candidates found
-        if len(candidates) < k:
+        # 2. Expand search to depth L + 1 if fewer than pool_target candidates found
+        if len(candidates) < pool_target:
             self._collect_candidates_at_depth(configs, min_h + 1, pool_target, candidates, seen_paths, deadline)
+
 
         if rank_by == "e_stm":
             scored_candidates: List[FBSolution] = []
@@ -384,7 +385,7 @@ def solve_fb(
     k: int = 5,
     orientation: Optional[Union[str, CanonicalSymmetry, Tuple[Color, Color]]] = None,
     timeout_ms: Optional[float] = 10.0,
-    rank_by: str = "stm",
+    rank_by: Literal["stm", "e_stm"] = "stm",
     top_k: Optional[int] = None,
 ) -> List[FBSolution]:
     """Solves First Block using Top-K Candidate Search IDA* heuristic search.

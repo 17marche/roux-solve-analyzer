@@ -91,3 +91,13 @@ class TestFBTopKErgonomicRanking:
         # Assert monotonic order
         for i in range(len(sols) - 1):
             assert sols[i].e_stm <= sols[i + 1].e_stm
+
+    def test_solve_fb_prefers_lower_e_stm_candidate(self):
+        # Scramble with multiple FB solutions
+        scramble = "B D F R"
+        sols_estm = solve_fb(scramble, top_k=5, rank_by="e_stm")
+        assert len(sols_estm) >= 2
+        assert sols_estm[0].e_stm is not None
+        assert all(sols_estm[0].e_stm <= s.e_stm for s in sols_estm if s.e_stm is not None)
+
+

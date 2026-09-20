@@ -20,6 +20,7 @@ class TestCliFlow:
         assert "Effective STM (E-STM):" in captured.out
         assert "Kinematic Flow Efficiency:" in captured.out
         assert "Regrip Count:" in captured.out
+        assert "Macro Triggers:              None" in captured.out
 
     def test_flow_static_moves_json_report(self, capsys):
         code = main(["flow", "R U R' U'", "--json"])
@@ -86,8 +87,22 @@ class TestCliFlow:
         assert data["raw_stm"] == 6
         assert data["regrip_count"] == 0
 
+    def test_flow_stream_with_tempo(self, tmp_path, capsys):
+        stream_data = [
+            {"move": "R", "timestamp_ms": 100},
+            {"move": "U", "timestamp_ms": 500},
+        ]
+        stream_file = tmp_path / "stream_tempo.json"
+        stream_file.write_text(json.dumps(stream_data))
+
+        code = main(["flow", str(stream_file), "--tempo", "0.2", "--json"])
+        assert code == 0
+        data = json.loads(capsys.readouterr().out)
+        assert data.get("tempo") == 0.2
+
     def test_flow_empty_input_errors(self, capsys):
         code = main(["flow", ""])
         assert code == 1
         captured = capsys.readouterr()
         assert "Error" in captured.err
+
