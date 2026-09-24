@@ -1,7 +1,7 @@
 # Roux AI Speedcube Coach & Critique Engine (`roux-engine`)
 
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
-[![Tests](https://img.shields.io/badge/tests-492%20passing-brightgreen.svg)]()
+[![Tests](https://img.shields.io/badge/tests-547%20passing-brightgreen.svg)]()
 [![PDB Footprint](https://img.shields.io/badge/PDB%20memory-%3C%20600%20KB-orange.svg)]()
 [![Benchmark Superiority](https://img.shields.io/badge/human%20benchmark-99.4%25%20superiority-success.svg)]()
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
@@ -34,7 +34,7 @@ Engineered with **admissible $IDA^*$ search**, **sub-megabyte Pattern Databases 
 * **Admissible Heuristic Search ($IDA^*$):** Formulates Rubik's Cube phase completion as an exact graph search over combinatorial sub-spaces ($>4.3 \times 10^{19}$ total states), guaranteeing minimum-distance bounds $h(s) \le h^*(s)$.
 * **Sub-Megabyte Pattern Databases (PDB):** Compresses a **5.32M state** First Block database into **2.54 MB** and a **1.08M state** Second Block database into **544 KB** using 4-bit packed nibbles with $O(1)$ bitwise lookup latency ($< 1\,\mu\text{s}$).
 * **Multi-Paradigm Heuristic Solving:** Explores both unconstrained shortest paths (**Free Blockbuilding**, averaging **11.2 STM**) and human-mimetic cognitive stages (**Classical Standard**, observing DR-first and pair slotting constraints).
-* **Automated Soundness & Invariant Proofs:** 450 automated tests verify First Block preservation, M-slice center alignment, and moveset generator compliance across all solutions.
+* **Automated Soundness & Invariant Proofs:** 547 automated tests verify First Block preservation, M-slice center alignment, and moveset generator compliance across all solutions.
 * **Empirical Validation:** Benchmarked across **959 verified competitive tournament solves** from `reco.nz`, beating or matching elite human reconstructor movecounts in **99.37% of solves**.
 
 ---
@@ -69,7 +69,7 @@ flowchart TD
     end
     
     T1 --> S_T1
-    S_T1 -.-> T2["Tier 2: Empirical Ergonomics\n(2-Gram Latency & Regrip Matrix) [IN PROGRESS]"]
+    S_T1 --> T2["Tier 2: Empirical Ergonomics\n(2-Gram Latency & Regrip Matrix) [OPERATIONAL]"]
     T2 -.-> T3["Tier 3: Neural Policy Model\n(Behavioral Cloning & Lookahead) [PLANNED]"]
     T3 -.-> Report["Actionable Coaching Report\n(Movecount & Fluency Feedback) [PLANNED]"]
 ```
@@ -145,7 +145,7 @@ Full Solution:
 --------------------------------------------------------------------------------
 3D Interactive Visualization (alg.cubing.net):
   https://alg.cubing.net/?setup=D2+F2+R2+B2+U+L2+U2+F2+D+R2+B2+R+B+U2+L+B2+D2+F+R2+B2&alg=D+r2+D+F+D%27+R2+B%27+R2+U%27+R+M+U+M2+U2+r%27+U+R%27+R+U2%27+R%27+U2%27+R%27+F+R+F%27+U%27+U%27+M+U+M%27+U+M%27+U+M+U2+M2
-===============================================================================
+================================================================================
   💡 Tip: Run with `--style classical` for human-mimetic pair building!
 ================================================================================
 ```
@@ -240,7 +240,7 @@ uv sync
 ```
 
 ### Running Tests
-Run the comprehensive 446-test test suite:
+Run the comprehensive 547-test test suite:
 ```bash
 uv run pytest -v
 ```
