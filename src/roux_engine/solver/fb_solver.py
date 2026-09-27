@@ -357,6 +357,10 @@ class FBSolver:
         if len(candidates) < pool_target:
             self._collect_candidates_at_depth(configs, min_h + 1, pool_target, candidates, seen_paths, deadline)
 
+        # 3. For e_stm ranking, expand search to depth L + 2 to discover fluid alternative lines
+        if rank_by == "e_stm" and len(candidates) < pool_target:
+            self._collect_candidates_at_depth(configs, min_h + 2, pool_target, candidates, seen_paths, deadline)
+
 
         if rank_by == "e_stm":
             scored_candidates: List[FBSolution] = []

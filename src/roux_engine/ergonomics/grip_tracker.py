@@ -28,13 +28,12 @@ class GripTrackingResult:
 
 
 class GripTracker:
-    """4-state right-hand kinematic model tracking wrist orientation and forced regrips.
+    """3-state right-hand kinematic model tracking wrist orientation and forced regrips.
     
     States:
       - HOME: Neutral home grip (thumb on Front/FR, fingers on Back/BR).
       - R_AWAY: +90° clockwise rotation (thumb on U, fingers on D).
       - R_PRIME_AWAY: -90° counter-clockwise rotation (thumb on D, fingers on U).
-      - R2_AWAY: 180° rotation (thumb on Back, fingers on Front).
     """
 
     # Move transition mapping for turns that physically rotate the right hand
@@ -42,21 +41,18 @@ class GripTracker:
     _R_TRANSITIONS: Dict[str, Dict[GripState, Optional[GripState]]] = {
         "R": {
             GripState.HOME: GripState.R_AWAY,
-            GripState.R_AWAY: GripState.R2_AWAY,
+            GripState.R_AWAY: None,  # DEAD_END: anatomical limit
             GripState.R_PRIME_AWAY: GripState.HOME,
-            GripState.R2_AWAY: None,  # DEAD_END: anatomical limit
         },
         "R'": {
             GripState.HOME: GripState.R_PRIME_AWAY,
             GripState.R_AWAY: GripState.HOME,
             GripState.R_PRIME_AWAY: None,  # DEAD_END: anatomical limit
-            GripState.R2_AWAY: GripState.R_AWAY,
         },
         "R2": {
-            GripState.HOME: GripState.R2_AWAY,
+            GripState.HOME: None,  # Blocked from HOME (forces anticipatory regrip)
             GripState.R_AWAY: GripState.R_PRIME_AWAY,
             GripState.R_PRIME_AWAY: GripState.R_AWAY,
-            GripState.R2_AWAY: GripState.HOME,
         },
     }
     # Wide r turns follow the exact same right-hand wrist mechanics
@@ -67,20 +63,13 @@ class GripTracker:
     # Set of moves considered anatomically impossible or blocked from each grip state without regrip
     _BLOCKED_MOVES: Dict[GripState, Set[str]] = {
         GripState.HOME: {
-            "F2", "B",
+            "F2", "B", "B'", "B2", "R2", "r2",
         },
         GripState.R_AWAY: {
-            "F", "r2",
+            "R", "r",
         },
         GripState.R_PRIME_AWAY: {
-            "U", "R'", "r'",
-        },
-        GripState.R2_AWAY: {
-            "R", "r", "r'", "r2",
-            "U", "F", "F'", "F2",
-            "B", "B'", "B2",
-            "D", "D'", "D2",
-            "M",
+            "R'", "r'",
         },
     }
 
@@ -120,7 +109,6 @@ class GripTracker:
         GripState.HOME: 0.0,
         GripState.R_AWAY: 0.1,
         GripState.R_PRIME_AWAY: 0.15,
-        GripState.R2_AWAY: 0.3,
     }
 
     _REGRIP_BASE_COST: float = 1000.0
@@ -155,7 +143,6 @@ class GripTracker:
             GripState.HOME,
             GripState.R_AWAY,
             GripState.R_PRIME_AWAY,
-            GripState.R2_AWAY,
         ]
 
         # Initial state: the hand starts in initial_grip before any moves

@@ -11,7 +11,6 @@ class GripState(str, Enum):
     HOME = "HOME"
     R_AWAY = "R_AWAY"
     R_PRIME_AWAY = "R_PRIME_AWAY"
-    R2_AWAY = "R2_AWAY"
 
 
 class PauseType(str, Enum):

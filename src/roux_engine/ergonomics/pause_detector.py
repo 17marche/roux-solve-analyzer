@@ -216,10 +216,10 @@ class StreamPauseDetector:
                 ratio = round(delta_ms / expected_ms, 2)
                 is_regrip = tracking.steps[i].regrip if i < len(tracking.steps) else False
 
-                if is_regrip:
-                    pause_type = PauseType.PHYSICAL_REGRIP
-                elif delta_ms >= cog_thresh:
+                if delta_ms >= cog_thresh:
                     pause_type = PauseType.COGNITIVE_HESITATION
+                elif is_regrip:
+                    pause_type = PauseType.PHYSICAL_REGRIP
                 else:
                     pause_type = PauseType.EXECUTION_LOCKUP
 

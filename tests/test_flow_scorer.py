@@ -25,27 +25,26 @@ class TestFlowScorerStaticSequences:
         assert score.regrip_count == 0
         # E-STM should be lower than 4.0 due to sub-1.0 fluid bigram efforts
         assert score.e_stm < 4.0
-        # Kinematic efficiency should be > 100% because actual effort is lower than baseline 1.0/move
-        assert score.kinematic_efficiency > 100.0
+        # Kinematic efficiency is capped at 100.0%
+        assert score.kinematic_efficiency == 100.0
         assert len(score.per_move_analysis) == 4
         assert not any(m.regrip for m in score.per_move_analysis)
 
-    def test_awkward_r_f_forces_higher_e_stm_and_lower_efficiency(self):
+    def test_awkward_r_r_forces_higher_e_stm_and_lower_efficiency(self):
         scorer = FlowScorer()
-        score_rf = scorer.score_moves("R F")
-        assert score_rf.raw_stm == 2
-        assert score_rf.regrip_count == 1
-        # E-STM = effort(R) + effort(F) + 2.0 * 1
-        # RF transition effort is high (~3.0) + regrip (2.0) + baseline R (1.0) => ~6.0
-        assert score_rf.e_stm > 4.5
-        assert score_rf.kinematic_efficiency < 50.0
+        # R -> R forces a regrip because R is blocked from R_AWAY
+        score_rr = scorer.score_moves("R R")
+        assert score_rr.raw_stm == 2
+        assert score_rr.regrip_count == 1
+        assert score_rr.e_stm > 3.0
+        assert score_rr.kinematic_efficiency < 70.0
 
         # Compare per-move effort with fluid R U R' U'
         score_fluid = scorer.score_moves("R U R' U'")
-        effort_per_move_rf = score_rf.e_stm / score_rf.raw_stm
+        effort_per_move_rr = score_rr.e_stm / score_rr.raw_stm
         effort_per_move_fluid = score_fluid.e_stm / score_fluid.raw_stm
-        assert effort_per_move_rf > effort_per_move_fluid * 3.0
-        assert score_fluid.kinematic_efficiency > score_rf.kinematic_efficiency
+        assert effort_per_move_rr > effort_per_move_fluid * 2.0
+        assert score_fluid.kinematic_efficiency > score_rr.kinematic_efficiency
 
     def test_awkward_r2_b_forces_regrip_and_lower_efficiency(self):
         scorer = FlowScorer()
@@ -151,11 +150,13 @@ class TestFlowScorerStreamScoring:
         scorer = FlowScorer()
         stream = [
             {"move": "R", "timestamp_ms": 100},
-            {"move": "F", "timestamp_ms": 1100},  # 1000ms: R -> F forced regrip pause
-            {"move": "U", "timestamp_ms": 1220},  # 120ms
+            {"move": "R", "timestamp_ms": 600},   # 500ms: R->R forced regrip pause -> PHYSICAL_REGRIP
+            {"move": "U", "timestamp_ms": 720},   # 120ms
+            {"move": "R'", "timestamp_ms": 840},  # 120ms
+            {"move": "U'", "timestamp_ms": 960},  # 120ms
         ]
         score = scorer.score_stream(stream)
-        assert len(score.per_move_analysis) == 3
+        assert len(score.per_move_analysis) == 5
         assert score.per_move_analysis[1].regrip is True
         assert score.per_move_analysis[1].pause_type == "PHYSICAL_REGRIP"
         assert score.pause_breakdown.get("PHYSICAL_REGRIP", 0) == 1

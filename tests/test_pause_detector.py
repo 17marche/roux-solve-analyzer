@@ -85,14 +85,14 @@ class TestStreamPauseClassification:
 
     def test_physical_regrip_classification(self):
         detector = StreamPauseDetector(pause_threshold_ms=250.0, pace_adaptive=False)
-        # R -> F forces a kinematic regrip
+        # R -> R forces a kinematic regrip (R is blocked in R_AWAY)
         stream = [
             {"move": "R", "timestamp_ms": 100},
-            {"move": "F", "timestamp_ms": 450},  # delta = 350ms > 250ms, forced regrip
+            {"move": "R", "timestamp_ms": 450},  # delta = 350ms > 250ms, forced regrip
         ]
         pauses = detector.detect_pauses(stream)
         assert len(pauses) == 1
-        assert pauses[0].move == "F"
+        assert pauses[0].move == "R"
         assert pauses[0].pause_type == PauseType.PHYSICAL_REGRIP
         assert pauses[0].pause_type == "PHYSICAL_REGRIP"
 
@@ -130,6 +130,22 @@ class TestStreamPauseClassification:
         assert pauses[0].pause_type == PauseType.COGNITIVE_HESITATION
         assert pauses[0].pause_type == "COGNITIVE_HESITATION"
 
+    def test_cognitive_hesitation_takes_precedence_over_regrip_on_long_pause(self):
+        detector = StreamPauseDetector(
+            pause_threshold_ms=250.0,
+            cognitive_threshold_ms=500.0,
+            pace_adaptive=False,
+        )
+        # R -> R forces a kinematic regrip, but took 1200ms (>= 500ms cognitive threshold)
+        stream = [
+            {"move": "R", "timestamp_ms": 100},
+            {"move": "R", "timestamp_ms": 1300},  # delta = 1200ms
+        ]
+        pauses = detector.detect_pauses(stream)
+        assert len(pauses) == 1
+        assert pauses[0].move == "R"
+        assert pauses[0].pause_type == PauseType.COGNITIVE_HESITATION
+
     def test_mixed_stream_with_all_pause_types(self):
         detector = StreamPauseDetector(
             pause_threshold_ms=250.0,
@@ -138,7 +154,7 @@ class TestStreamPauseClassification:
         )
         stream = [
             {"move": "R", "timestamp_ms": 100},
-            {"move": "F", "timestamp_ms": 450},   # 350ms: R->F forced regrip -> PHYSICAL_REGRIP
+            {"move": "R", "timestamp_ms": 450},   # 350ms: R->R forced regrip -> PHYSICAL_REGRIP
             {"move": "R", "timestamp_ms": 570},   # 120ms: fluent turn (no pause)
             {"move": "U", "timestamp_ms": 920},   # 350ms: no regrip, 350ms -> EXECUTION_LOCKUP
             {"move": "R'", "timestamp_ms": 1040}, # 120ms: fluent turn (no pause)

@@ -16,55 +16,75 @@ class TestGripTrackerTransitionsAndContortions:
         assert tracker.is_valid_turn("R'", GripState.HOME)
         assert tracker.get_next_grip("R'", GripState.HOME) == GripState.R_PRIME_AWAY
 
-        assert tracker.is_valid_turn("R2", GripState.HOME)
-        assert tracker.get_next_grip("R2", GripState.HOME) == GripState.R2_AWAY
+        # R2 from HOME requires anticipatory regrip and is blocked from HOME directly
+        assert not tracker.is_valid_turn("R2", GripState.HOME)
+        assert not tracker.is_valid_turn("r2", GripState.HOME)
 
         # Wide r turns follow the same kinematics
         assert tracker.get_next_grip("r", GripState.HOME) == GripState.R_AWAY
         assert tracker.get_next_grip("r'", GripState.HOME) == GripState.R_PRIME_AWAY
-        assert tracker.get_next_grip("r2", GripState.HOME) == GripState.R2_AWAY
 
     def test_r_family_transitions_from_r_away(self):
         tracker = GripTracker()
-        # R from R_AWAY advances to R2_AWAY
-        assert tracker.is_valid_turn("R", GripState.R_AWAY)
-        assert tracker.get_next_grip("R", GripState.R_AWAY) == GripState.R2_AWAY
+        # Continuing R or r from R_AWAY past +90° is an anatomical limit
+        assert not tracker.is_valid_turn("R", GripState.R_AWAY)
+        assert not tracker.is_valid_turn("r", GripState.R_AWAY)
 
-        # R' from R_AWAY returns to HOME
+        # R' and r' from R_AWAY returns to HOME
         assert tracker.is_valid_turn("R'", GripState.R_AWAY)
         assert tracker.get_next_grip("R'", GripState.R_AWAY) == GripState.HOME
+        assert tracker.is_valid_turn("r'", GripState.R_AWAY)
+        assert tracker.get_next_grip("r'", GripState.R_AWAY) == GripState.HOME
 
-        # R2 from R_AWAY moves to R_PRIME_AWAY
+        # R2 and r2 from R_AWAY moves to R_PRIME_AWAY
         assert tracker.is_valid_turn("R2", GripState.R_AWAY)
         assert tracker.get_next_grip("R2", GripState.R_AWAY) == GripState.R_PRIME_AWAY
+        assert tracker.is_valid_turn("r2", GripState.R_AWAY)
+        assert tracker.get_next_grip("r2", GripState.R_AWAY) == GripState.R_PRIME_AWAY
 
-    def test_impossible_hand_contortions_dead_ends(self):
+    def test_r_family_transitions_from_r_prime_away(self):
         tracker = GripTracker()
-        # Continuing R turn from R2_AWAY is anatomically impossible without regrip
-        assert not tracker.is_valid_turn("R", GripState.R2_AWAY)
-        assert tracker.get_next_grip("R", GripState.R2_AWAY) is None
-
-        # Continuing R' turn from R_PRIME_AWAY is anatomically impossible
+        # Continuing R' or r' from R_PRIME_AWAY past -90° is an anatomical limit
         assert not tracker.is_valid_turn("R'", GripState.R_PRIME_AWAY)
-        assert tracker.get_next_grip("R'", GripState.R_PRIME_AWAY) is None
+        assert not tracker.is_valid_turn("r'", GripState.R_PRIME_AWAY)
 
-    def test_impossible_face_turns_per_grip(self):
+        # R and r from R_PRIME_AWAY returns to HOME
+        assert tracker.is_valid_turn("R", GripState.R_PRIME_AWAY)
+        assert tracker.get_next_grip("R", GripState.R_PRIME_AWAY) == GripState.HOME
+        assert tracker.is_valid_turn("r", GripState.R_PRIME_AWAY)
+        assert tracker.get_next_grip("r", GripState.R_PRIME_AWAY) == GripState.HOME
+
+        # R2 and r2 from R_PRIME_AWAY moves to R_AWAY
+        assert tracker.is_valid_turn("R2", GripState.R_PRIME_AWAY)
+        assert tracker.get_next_grip("R2", GripState.R_PRIME_AWAY) == GripState.R_AWAY
+        assert tracker.is_valid_turn("r2", GripState.R_PRIME_AWAY)
+        assert tracker.get_next_grip("r2", GripState.R_PRIME_AWAY) == GripState.R_AWAY
+
+    def test_blocked_moves_from_home(self):
         tracker = GripTracker()
-        # F turn from R_AWAY is impossible (forces regrip)
-        assert not tracker.is_valid_turn("F", GripState.R_AWAY)
-        assert tracker.get_next_grip("F", GripState.R_AWAY) is None
-
-        # B turn from R2_AWAY is impossible (forces regrip)
-        assert not tracker.is_valid_turn("B", GripState.R2_AWAY)
-        assert tracker.get_next_grip("B", GripState.R2_AWAY) is None
-
-        # U clockwise from R_PRIME_AWAY is impossible (blocked right index finger)
-        assert not tracker.is_valid_turn("U", GripState.R_PRIME_AWAY)
-        assert tracker.get_next_grip("U", GripState.R_PRIME_AWAY) is None
-
-        # B from HOME is impossible
+        # B moves, F2, and R2/r2 are blocked from HOME without regrip
         assert not tracker.is_valid_turn("B", GripState.HOME)
-        assert tracker.get_next_grip("B", GripState.HOME) is None
+        assert not tracker.is_valid_turn("B'", GripState.HOME)
+        assert not tracker.is_valid_turn("B2", GripState.HOME)
+        assert not tracker.is_valid_turn("F2", GripState.HOME)
+        assert not tracker.is_valid_turn("R2", GripState.HOME)
+        assert not tracker.is_valid_turn("r2", GripState.HOME)
+
+    def test_unblocked_moves_in_non_home_grips(self):
+        tracker = GripTracker()
+        # In R_AWAY, F moves and left-hand U moves are unblocked
+        assert tracker.is_valid_turn("F", GripState.R_AWAY)
+        assert tracker.is_valid_turn("F'", GripState.R_AWAY)
+        assert tracker.is_valid_turn("U", GripState.R_AWAY)
+        assert tracker.is_valid_turn("U'", GripState.R_AWAY)
+        assert tracker.is_valid_turn("D", GripState.R_AWAY)
+
+        # In R_PRIME_AWAY, F and U moves (including left index U/U') are unblocked
+        assert tracker.is_valid_turn("F", GripState.R_PRIME_AWAY)
+        assert tracker.is_valid_turn("F'", GripState.R_PRIME_AWAY)
+        assert tracker.is_valid_turn("U", GripState.R_PRIME_AWAY)
+        assert tracker.is_valid_turn("U'", GripState.R_PRIME_AWAY)
+        assert tracker.is_valid_turn("D", GripState.R_PRIME_AWAY)
 
     def test_non_r_turns_preserve_grip_state(self):
         tracker = GripTracker()
@@ -132,33 +152,48 @@ class TestGripTrackerDPMinimization:
         res = tracker.track("r U R' U' r' R U")
         assert res.regrip_count == 0
 
-    def test_awkward_r_f_forces_mechanical_regrip(self):
+    def test_fluid_r_f_in_r_away(self):
         tracker = GripTracker()
-        # R puts hand in R_AWAY. F is impossible from R_AWAY without a regrip!
+        # R puts hand in R_AWAY. F is unblocked in R_AWAY (flicked like a D turn from home).
         res = tracker.track("R F")
-        assert res.regrip_count >= 1
+        assert res.regrip_count == 0
         assert len(res.steps) == 2
-        # First move R has no regrip
-        assert not res.steps[0].regrip
-        # Second move F has a forced regrip
-        assert res.steps[1].regrip
-
-    def test_awkward_r2_b_forces_mechanical_regrip(self):
-        tracker = GripTracker()
-        # R2 puts hand in R2_AWAY. B is impossible from R2_AWAY without a regrip!
-        res = tracker.track("R2 B")
-        assert res.regrip_count >= 1
-        assert res.steps[1].regrip
-
-    def test_triple_r_forces_regrip_due_to_anatomical_dead_end(self):
-        tracker = GripTracker()
-        # R -> R_AWAY, R -> R2_AWAY, third R from R2_AWAY is impossible (DEAD_END)
-        # Therefore a regrip is forced before the 3rd R
-        res = tracker.track("R R R")
-        assert res.regrip_count == 1
         assert not res.steps[0].regrip
         assert not res.steps[1].regrip
-        assert res.steps[2].regrip
+
+    def test_r2_from_home_forces_anticipatory_regrip(self):
+        tracker = GripTracker()
+        # R2 from HOME cannot be done directly; solver does an anticipatory regrip
+        res = tracker.track("R2")
+        assert res.regrip_count == 1
+        assert len(res.steps) == 1
+        assert res.steps[0].regrip
+        assert res.steps[0].grip_before == GripState.HOME
+        assert res.steps[0].grip_during in (GripState.R_AWAY, GripState.R_PRIME_AWAY)
+
+    def test_double_r_forces_regrip_due_to_anatomical_dead_end(self):
+        tracker = GripTracker()
+        # R -> R_AWAY (+90°). Second R is an anatomical dead end, forcing a regrip
+        res = tracker.track("R R")
+        assert res.regrip_count == 1
+        assert not res.steps[0].regrip
+        assert res.steps[1].regrip
+
+    def test_double_r_prime_forces_regrip_due_to_anatomical_dead_end(self):
+        tracker = GripTracker()
+        # R' -> R_PRIME_AWAY (-90°). Second R' is an anatomical dead end, forcing a regrip
+        res = tracker.track("R' R'")
+        assert res.regrip_count == 1
+        assert not res.steps[0].regrip
+        assert res.steps[1].regrip
+
+    def test_fluid_r_prime_u_moves(self):
+        tracker = GripTracker()
+        # R' puts right hand in R_PRIME_AWAY. Both U and U' are executed with 0 regrips
+        res_u = tracker.track("R' U")
+        assert res_u.regrip_count == 0
+        res_u_prime = tracker.track("R' U'")
+        assert res_u_prime.regrip_count == 0
 
     def test_custom_initial_grip(self):
         tracker = GripTracker()

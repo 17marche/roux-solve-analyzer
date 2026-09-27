@@ -8,7 +8,7 @@ Enforces Center-Aligned SB goal condition and dual-neutral symmetry re-mapping.
 from __future__ import annotations
 from collections import deque
 from dataclasses import dataclass
-from typing import List, Tuple, Sequence, Optional, Union, Any
+from typing import List, Tuple, Sequence, Optional, Union, Any, Literal
 
 from .sb_pdb_generator import SB_MOVESET
 
@@ -132,6 +132,7 @@ class SBSolution:
     square_move_idx: Optional[int] = None
     resulting_cmll_case: str = "Skip"
     orientation: str = ""
+    e_stm: Optional[float] = None
 
 
 def get_m_slice_center_offset(
@@ -256,12 +257,47 @@ class SBSolver:
         self.macro_corner_trans, self.macro_edge_trans = build_macro_sb_transition_tables(
             [t.moves for t in self.macro_triggers]
         )
+        self._flow_scorer: Optional[Any] = None
+
+    @property
+    def flow_scorer(self) -> Any:
+        """Lazy-loaded FlowScorer for ergonomic E-STM ranking."""
+        if self._flow_scorer is None:
+            from ..ergonomics.flow_scorer import FlowScorer
+            self._flow_scorer = FlowScorer()
+        return self._flow_scorer
 
     @classmethod
     def get_instance(cls) -> SBSolver:
         if cls._instance is None:
             cls._instance = cls()
         return cls._instance
+
+    @classmethod
+    def solve_sb(
+        cls,
+        scramble_or_cube: Union[str, CubeState],
+        k: int = 5,
+        top_k: Optional[int] = None,
+        style: str = "all",
+        order: str = "best",
+        orientation: Optional[Union[str, CanonicalSymmetry, Tuple[Color, Color]]] = None,
+        timeout_ms: Optional[float] = None,
+        allow_macro_triggers: bool = False,
+        rank_by: Literal["stm", "e_stm"] = "stm",
+    ) -> List[SBSolution]:
+        """Convenience class method forwarding to get_instance().solve."""
+        return cls.get_instance().solve(
+            scramble_or_cube=scramble_or_cube,
+            k=k,
+            top_k=top_k,
+            style=style,
+            order=order,
+            orientation=orientation,
+            timeout_ms=timeout_ms,
+            allow_macro_triggers=allow_macro_triggers,
+            rank_by=rank_by,
+        )
 
     def _heuristic(self, state_idx: int, center_off: int) -> int:
         """Returns exact PDB heuristic distance with Center-Aligned SB penalty."""
@@ -933,6 +969,8 @@ class SBSolver:
         orientation: Optional[Union[str, CanonicalSymmetry, Tuple[Color, Color]]] = None,
         timeout_ms: Optional[float] = None,
         allow_macro_triggers: bool = False,
+        rank_by: Literal["stm", "e_stm"] = "stm",
+        top_k: Optional[int] = None,
     ) -> List[SBSolution]:
         """Discovers top-K candidate Second Block solutions using IDA* search.
 
@@ -944,6 +982,8 @@ class SBSolver:
             orientation: Optional orientation filter (restricts to single color scheme).
             timeout_ms: Optional search timeout in milliseconds.
             allow_macro_triggers: Whether to evaluate 4-STM compound moves (Sledgehammer, Hedge).
+            rank_by: Ranking metric for candidate solutions ("stm" or "e_stm").
+            top_k: Optional alias for k.
 
         Returns:
             List of top-K SBSolution candidate move sequences.
@@ -955,9 +995,11 @@ class SBSolver:
         else:
             raise TypeError(f"Expected str or CubeState, got {type(scramble_or_cube).__name__}")
 
-        if k <= 0:
-            raise ValueError(f"k must be at least 1, got {k}")
+        effective_k = top_k if top_k is not None else k
+        if effective_k <= 0:
+            raise ValueError(f"k must be at least 1, got {effective_k}")
 
+        pool_target = max(effective_k * 4, 20) if rank_by == "e_stm" else effective_k
         deadline = (time.perf_counter() + timeout_ms / 1000.0) if timeout_ms is not None else None
 
         # Resolve orientation and symmetry frame
@@ -1039,7 +1081,7 @@ class SBSolver:
             raise ValueError(f"Unknown order '{order}'. Allowed orders: {sorted(VALID_ORDERS)}")
 
         if style == "all":
-            return self._solve_all(
+            raw_sols = self._solve_all(
                 base_cube=cube,
                 ori=ori,
                 sym=sym,
@@ -1049,13 +1091,13 @@ class SBSolver:
                 c_idx=c_idx,
                 e_idx=e_idx,
                 center_off=center_off,
-                k=k,
+                k=pool_target,
                 order=order,
                 deadline=deadline,
                 allow_macro_triggers=allow_macro_triggers,
             )
         elif style == "square_pair":
-            return self._solve_square_pair(
+            raw_sols = self._solve_square_pair(
                 base_cube=cube,
                 ori=ori,
                 sym=sym,
@@ -1065,13 +1107,13 @@ class SBSolver:
                 c_idx=c_idx,
                 e_idx=e_idx,
                 center_off=center_off,
-                k=k,
+                k=pool_target,
                 order=order,
                 deadline=deadline,
                 allow_macro_triggers=allow_macro_triggers,
             )
         elif style == "classical":
-            return self._solve_classical(
+            raw_sols = self._solve_classical(
                 base_cube=cube,
                 ori=ori,
                 sym=sym,
@@ -1081,13 +1123,13 @@ class SBSolver:
                 c_idx=c_idx,
                 e_idx=e_idx,
                 center_off=center_off,
-                k=k,
+                k=pool_target,
                 order=order,
                 deadline=deadline,
                 allow_macro_triggers=allow_macro_triggers,
             )
         else:
-            return self._solve_free(
+            raw_sols = self._solve_free(
                 base_cube=cube,
                 ori=ori,
                 sym=sym,
@@ -1096,10 +1138,35 @@ class SBSolver:
                 c_idx=c_idx,
                 e_idx=e_idx,
                 center_off=center_off,
-                k=k,
+                k=pool_target,
                 deadline=deadline,
                 allow_macro_triggers=allow_macro_triggers,
             )
+
+        if rank_by == "e_stm":
+            scored: List[SBSolution] = []
+            for sol in raw_sols:
+                score = self.flow_scorer.score_moves(sol.moves)
+                scored.append(
+                    SBSolution(
+                        moves=sol.moves,
+                        move_count=sol.move_count,
+                        style=sol.style,
+                        order=sol.order,
+                        dr_move_idx=sol.dr_move_idx,
+                        pair1_move_idx=sol.pair1_move_idx,
+                        square_move_idx=sol.square_move_idx,
+                        resulting_cmll_case=sol.resulting_cmll_case,
+                        orientation=sol.orientation,
+                        e_stm=score.e_stm,
+                    )
+                )
+            scored.sort(
+                key=lambda s: (s.e_stm if s.e_stm is not None else float("inf"), s.move_count)
+            )
+            return scored[:effective_k]
+
+        return raw_sols[:effective_k]
 
 
 def solve_sb(
@@ -1111,6 +1178,7 @@ def solve_sb(
     orientation: Optional[Union[str, CanonicalSymmetry, Tuple[Color, Color]]] = None,
     timeout_ms: Optional[float] = None,
     allow_macro_triggers: bool = False,
+    rank_by: Literal["stm", "e_stm"] = "stm",
 ) -> List[SBSolution]:
     """Solves Second Block using Center-Aligned IDA* heuristic search.
 
@@ -1123,6 +1191,7 @@ def solve_sb(
         orientation: Optional First Block orientation filter.
         timeout_ms: Optional search timeout in milliseconds.
         allow_macro_triggers: Whether to evaluate 4-STM compound moves (Sledgehammer, Hedge).
+        rank_by: Ranking metric for candidate solutions ("stm" or "e_stm").
 
     Returns:
         List of top-K SBSolution candidate move sequences.
@@ -1137,6 +1206,7 @@ def solve_sb(
         orientation=orientation,
         timeout_ms=timeout_ms,
         allow_macro_triggers=allow_macro_triggers,
+        rank_by=rank_by,
     )
 
 

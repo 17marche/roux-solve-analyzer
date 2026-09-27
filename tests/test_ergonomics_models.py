@@ -16,8 +16,7 @@ class TestGripStateEnum:
         assert GripState.HOME.value == "HOME"
         assert GripState.R_AWAY.value == "R_AWAY"
         assert GripState.R_PRIME_AWAY.value == "R_PRIME_AWAY"
-        assert GripState.R2_AWAY.value == "R2_AWAY"
-        assert len(GripState) == 4
+        assert len(GripState) == 3
 
     def test_grip_state_str_compatibility(self):
         assert GripState.HOME == "HOME"

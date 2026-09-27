@@ -121,7 +121,7 @@ class FlowScorer:
 
         regrip_count = sum(1 for m in per_move_analysis if m.regrip)
         e_stm = total_transition_effort + (2.0 * regrip_count)
-        kinematic_efficiency = (raw_stm / e_stm * 100.0) if e_stm > 0 else 0.0
+        kinematic_efficiency = min(100.0, (raw_stm / e_stm * 100.0)) if e_stm > 0 else 0.0
 
         return FlowScore(
             raw_stm=raw_stm,
