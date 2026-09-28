@@ -138,25 +138,20 @@ class RouxScrambleSolver:
 
         # 1. First Block Search across dual-neutral orientations
         fb_solver = FBSolver.get_instance()
-        dn_orientations = (
-            [get_orientation(orientation)]
-            if orientation is not None
-            else get_dual_neutral_orientations()
-        )
-
         best_fb: Optional[FBSolution] = None
         best_fb_ori: Optional[RouxOrientation] = None
 
-        for ori in dn_orientations:
-            rot = ori.rotations
-            candidates = fb_solver.solve(cube, k=10, orientation=rot)
-            # Find candidate using standard inspection rotation (preserving U/D axis)
-            for cand in candidates:
-                if cand.inspection_rotation == rot:
-                    if best_fb is None or cand.move_count < best_fb.move_count:
-                        best_fb = cand
-                        best_fb_ori = ori
-                    break
+        if orientation is not None:
+            target_ori = get_orientation(orientation)
+            candidates = fb_solver.solve(cube, k=10, orientation=target_ori.rotations)
+            if candidates:
+                best_fb = candidates[0]
+                best_fb_ori = get_orientation(best_fb.orientation)
+        else:
+            candidates = fb_solver.solve(cube, k=10)
+            if candidates:
+                best_fb = candidates[0]
+                best_fb_ori = get_orientation(best_fb.orientation)
 
         if best_fb is None or best_fb_ori is None:
             raise RuntimeError(f"Could not find valid First Block solution for scramble: {scramble}")
@@ -238,13 +233,8 @@ class RouxScrambleSolver:
 
         full_moves_str = " ".join(full_moves)
 
-        # Invert inspection rotation to test cube identity in world frame
-        verify_cube = sim.copy()
-        if best_fb.inspection_rotation:
-            inv_rot = MoveParser.invert_moves(best_fb.inspection_rotation)
-            verify_cube.apply_moves(" ".join(inv_rot))
-
-        is_valid = verify_cube.is_solved()
+        # Verify that applying full solution yields a solved cube
+        is_valid = sim.is_solved(allow_rotations=True)
         total_stm = best_fb.move_count + best_sb.move_count + cmll_stm + best_lse.move_count
         duration_ms = (time.perf_counter() - t0) * 1000.0
 
