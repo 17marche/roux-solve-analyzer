@@ -4,28 +4,33 @@ import pytest
 from roux_engine.core.cube import CubeState
 from roux_engine.core.parser import MoveParser
 from roux_engine.core.constants import Corner, Edge, Center
+from roux_engine.core.orientation import (
+    RouxOrientation,
+    get_orientation,
+    is_fb_solved,
+)
 from roux_engine.segmenter.fb_detector import (
     FBDetector,
-    ALL_BLOCK_DEFINITIONS,
     DUAL_NEUTRAL_ORIENTATIONS,
     FULL_COLOR_NEUTRAL_ORIENTATIONS
 )
 
 
 def test_fb_detector_canonical():
-    """Test FB detection on a canonical First Block solve."""
+    """Test FB detection on a canonical First Block solve via core.orientation seam."""
     clean_cube = CubeState()
-    assert FBDetector.is_canonical_fb_solved(clean_cube)
+    assert is_fb_solved(clean_cube)
+    assert not hasattr(FBDetector, "is_canonical_fb_solved")
 
     # Twisted corner at DLF should NOT be considered solved
     twisted_cube = CubeState()
     twisted_cube.co[Corner.DLF] = 1
-    assert not FBDetector.is_canonical_fb_solved(twisted_cube)
+    assert not is_fb_solved(twisted_cube)
 
     # Flipped edge at DL should NOT be considered solved
     flipped_cube = CubeState()
     flipped_cube.eo[Edge.DL] = 1
-    assert not FBDetector.is_canonical_fb_solved(flipped_cube)
+    assert not is_fb_solved(flipped_cube)
 
 
 def test_fb_detection_across_dual_neutral_orientations():
@@ -63,7 +68,7 @@ def test_fb_detection_full_color_neutral():
 
 def test_fb_concurrent_sb_tracking():
     """Verify that concurrent SB pieces (DR, square, pair) are detected with exact IDs and orientations."""
-    block = ALL_BLOCK_DEFINITIONS[""]
+    block = get_orientation("")
 
     # State 1: DR edge disturbed
     cube1 = CubeState()
@@ -92,11 +97,9 @@ def test_fb_solved_at_inspection_off_by_one():
 
 
 def test_fb_detector_uses_roux_orientation():
-    """Verify FB detector exports BlockDefinition as RouxOrientation and returns RouxOrientation."""
+    """Verify FB detector match_fb_block returns RouxOrientation."""
     from roux_engine.core.orientation import RouxOrientation
-    from roux_engine.segmenter.fb_detector import BlockDefinition
 
-    assert BlockDefinition is RouxOrientation
     clean_cube = CubeState()
     matched = FBDetector.match_fb_block(clean_cube)
     assert isinstance(matched, RouxOrientation)
@@ -104,22 +107,18 @@ def test_fb_detector_uses_roux_orientation():
     assert matched.is_fb_solved(clean_cube)
 
 
-def test_historical_backward_compatibility_aliases():
-    """Verify historical import locations in segmenter tier provide aliases for legacy block spec and dict."""
+def test_legacy_detector_aliases_removed():
+    """Verify legacy aliases BlockDefinition and ALL_BLOCK_DEFINITIONS are deleted from FBDetector."""
     import roux_engine.segmenter.fb_detector as seg_fb
-    from roux_engine.core.orientation import RouxOrientation
+    from roux_engine.core.orientation import RouxOrientation, get_orientation
 
-    # 1. Block spec legacy alias
-    assert seg_fb.BlockDefinition is RouxOrientation
+    # 1. Block spec and dictionary legacy aliases are deleted
+    assert not hasattr(seg_fb, "BlockDefinition")
+    assert not hasattr(seg_fb, "ALL_BLOCK_DEFINITIONS")
+    assert not hasattr(seg_fb.FBDetector, "is_canonical_fb_solved")
 
-    # 2. Block dictionary alias
-    assert hasattr(seg_fb, "ALL_BLOCK_DEFINITIONS")
-    assert len(seg_fb.ALL_BLOCK_DEFINITIONS) == 24
-    assert "" in seg_fb.ALL_BLOCK_DEFINITIONS
-    assert "x2" in seg_fb.ALL_BLOCK_DEFINITIONS
-
-    # 3. Verify all 39 piece and coordinate attributes on block objects in the dictionary
-    block = seg_fb.ALL_BLOCK_DEFINITIONS[""]
+    # 2. Canonical RouxOrientation has all 39 piece and coordinate attributes
+    block = get_orientation("")
     assert isinstance(block, RouxOrientation)
     assert block.rotations == ""
     assert hasattr(block, "left_color")
@@ -162,9 +161,10 @@ def test_historical_backward_compatibility_aliases():
     assert hasattr(block, "db_piece")
     assert hasattr(block, "db_eo")
 
-    # 4. Orientation list aliases
+    # 3. Orientation list exports
     assert hasattr(seg_fb, "DUAL_NEUTRAL_ORIENTATIONS")
     assert hasattr(seg_fb, "FULL_COLOR_NEUTRAL_ORIENTATIONS")
     assert len(seg_fb.DUAL_NEUTRAL_ORIENTATIONS) == 8
     assert len(seg_fb.FULL_COLOR_NEUTRAL_ORIENTATIONS) == 24
+
 

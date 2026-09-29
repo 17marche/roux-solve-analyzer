@@ -18,13 +18,6 @@ from ..core.orientation import (
 from .models import FBPhase, Orientation, ConcurrentSBProgress
 
 
-# Export BlockDefinition and ALL_BLOCK_DEFINITIONS as aliases to RouxOrientation
-# for backward compatibility with historical callers and scripts.
-BlockDefinition = RouxOrientation
-ALL_BLOCK_DEFINITIONS: Dict[str, RouxOrientation] = {
-    o.rotations: o for o in get_all_orientations()
-}
-
 # 8 Dual-Neutral Orientations (x2y group)
 DUAL_NEUTRAL_ORIENTATIONS: List[str] = [o.rotations for o in get_dual_neutral_orientations()]
 
@@ -32,8 +25,6 @@ DUAL_NEUTRAL_ORIENTATIONS: List[str] = [o.rotations for o in get_dual_neutral_or
 FULL_COLOR_NEUTRAL_ORIENTATIONS: List[str] = [o.rotations for o in get_all_orientations()]
 
 __all__ = [
-    "BlockDefinition",
-    "ALL_BLOCK_DEFINITIONS",
     "DUAL_NEUTRAL_ORIENTATIONS",
     "FULL_COLOR_NEUTRAL_ORIENTATIONS",
     "FBDetector",
@@ -42,11 +33,6 @@ __all__ = [
 
 class FBDetector:
     """Detects First Block completion across orientations and checks concurrent SB progress."""
-
-    @staticmethod
-    def is_canonical_fb_solved(state: CubeState) -> bool:
-        """Checks if the canonical Left First Block (DL, FL, BL, DFL, DBL, L center) is solved."""
-        return get_orientation("").is_fb_solved(state)
 
     @staticmethod
     def match_fb_block(
@@ -82,7 +68,7 @@ class FBDetector:
         initial_state: CubeState,
         events: Sequence[MoveEvent],
         full_color_neutral: bool = False
-    ) -> Optional[Tuple[FBPhase, str, CubeState, BlockDefinition]]:
+    ) -> Optional[Tuple[FBPhase, str, CubeState, RouxOrientation]]:
         """Finds the earliest move index where FB is solved.
         
         Returns:

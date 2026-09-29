@@ -195,11 +195,10 @@ class TestCompositeSBIndexing:
 
     def test_decode_zero_yields_solved_sb_and_fb_cube(self):
         """Decoding index 0 produces a CubeState where both FB and SB are solved."""
-        from roux_engine.segmenter.sb_detector import SBDetector
-        from roux_engine.segmenter.fb_detector import FBDetector
+        from roux_engine.core.orientation import is_fb_solved, is_sb_solved
         cube = SBIndexer.decode(0)
-        assert SBDetector.is_canonical_sb_solved(cube)
-        assert FBDetector.is_canonical_fb_solved(cube)
+        assert is_sb_solved(cube)
+        assert is_fb_solved(cube)
         assert SBIndexer.encode(cube) == 0
 
     def test_composite_bounds_and_invalid_index(self):
@@ -285,8 +284,7 @@ class TestRightBackSquareIndexing:
     def test_rbs_decoding_zero_yields_solved_rbs(self):
         """Index 0 must decode to solved RBS placement and CubeState."""
         from roux_engine.solver.sb_indexer import RightBackSquareIndexer
-        from roux_engine.segmenter.sb_detector import SBDetector
-        from roux_engine.segmenter.fb_detector import FBDetector
+        from roux_engine.core.orientation import is_fb_solved, is_dr_solved, is_back_pair_solved
 
         p = RightBackSquareIndexer.decode_to_placement(0)
         assert p.dr_slot == Edge.DR and p.dr_eo == 0
@@ -294,9 +292,9 @@ class TestRightBackSquareIndexing:
         assert p.dbr_slot == Corner.DRB and p.dbr_co == 0
 
         cube = RightBackSquareIndexer.decode(0)
-        assert FBDetector.is_canonical_fb_solved(cube)
-        assert SBDetector.is_dr_solved(cube)
-        assert SBDetector.is_back_pair_solved(cube)
+        assert is_fb_solved(cube)
+        assert is_dr_solved(cube)
+        assert is_back_pair_solved(cube)
         assert RightBackSquareIndexer.encode(cube) == 0
 
     def test_rbs_corner_bijection(self):
@@ -400,8 +398,7 @@ class TestRightFrontSquareIndexing:
     def test_rfs_decoding_zero_yields_solved_rfs(self):
         """Index 0 must decode to solved RFS placement and CubeState."""
         from roux_engine.solver.sb_indexer import RightFrontSquareIndexer
-        from roux_engine.segmenter.sb_detector import SBDetector
-        from roux_engine.segmenter.fb_detector import FBDetector
+        from roux_engine.core.orientation import is_fb_solved, is_dr_solved, is_front_pair_solved
 
         p = RightFrontSquareIndexer.decode_to_placement(0)
         assert p.dr_slot == Edge.DR and p.dr_eo == 0
@@ -409,9 +406,9 @@ class TestRightFrontSquareIndexing:
         assert p.dfr_slot == Corner.DFR and p.dfr_co == 0
 
         cube = RightFrontSquareIndexer.decode(0)
-        assert FBDetector.is_canonical_fb_solved(cube)
-        assert SBDetector.is_dr_solved(cube)
-        assert SBDetector.is_front_pair_solved(cube)
+        assert is_fb_solved(cube)
+        assert is_dr_solved(cube)
+        assert is_front_pair_solved(cube)
         assert RightFrontSquareIndexer.encode(cube) == 0
 
     def test_rfs_corner_bijection(self):
@@ -548,8 +545,8 @@ class TestSBIndexerIntegrationAndPerformance:
             cube = CubeState().apply_moves(scramble).apply_moves(segmented.fb.moves_str)
 
             # If this solve is canonical FB (white bottom, blue left), SB pieces are outside FB
-            from roux_engine.segmenter.fb_detector import FBDetector
-            if FBDetector.is_canonical_fb_solved(cube):
+            from roux_engine.core.orientation import is_fb_solved
+            if is_fb_solved(cube):
                 idx = SBIndexer.encode(cube)
                 assert 0 <= idx < SBIndexer.TOTAL_STATES
                 dec = SBIndexer.decode(idx)

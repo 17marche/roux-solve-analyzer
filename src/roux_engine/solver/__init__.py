@@ -52,7 +52,7 @@ from .lse_solver import (
     translate_lse_moves,
 )
 from .fb_solver import FBSolution, FBSolver, solve_fb
-from .sb_solver import SBSolution, SBSolver, solve_sb, is_center_aligned_sb_solved
+from .sb_solver import SBSolution, SBSolver, solve_sb
 from .scramble_solver import RouxScrambleSolver, FullSolveResult, solve_scramble
 from . import ida_star
 
@@ -106,7 +106,6 @@ __all__ = [
     "SBSolution",
     "SBSolver",
     "solve_sb",
-    "is_center_aligned_sb_solved",
     "RouxScrambleSolver",
     "FullSolveResult",
     "solve_scramble",

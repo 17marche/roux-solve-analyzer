@@ -156,9 +156,9 @@ class TestCompositeFBIndexing:
 
     def test_decode_zero_yields_solved_fb_cube(self):
         """Decoding index 0 produces a CubeState where FB is solved."""
-        from roux_engine.segmenter.fb_detector import FBDetector
+        from roux_engine.core.orientation import is_fb_solved
         cube = FBIndexer.decode(0)
-        assert FBDetector.is_canonical_fb_solved(cube)
+        assert is_fb_solved(cube)
         assert FBIndexer.encode(cube) == 0
 
     def test_composite_bounds_and_invalid_index(self):

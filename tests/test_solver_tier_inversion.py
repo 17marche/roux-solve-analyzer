@@ -20,6 +20,9 @@ from roux_engine.core.orientation import (
     get_orientation,
     get_all_orientations,
     get_dual_neutral_orientations,
+    is_center_aligned_sb_solved,
+    extract_sb_placement,
+    get_m_slice_center_offset,
 )
 from roux_engine.solver.symmetry import (
     CanonicalSymmetry as SolverCanonicalSymmetry,
@@ -30,9 +33,6 @@ from roux_engine.solver.symmetry import (
 )
 from roux_engine.solver.sb_solver import (
     SBSolver,
-    is_center_aligned_sb_solved,
-    extract_sb_placement,
-    get_m_slice_center_offset,
     solve_sb,
 )
 
@@ -64,13 +64,16 @@ class TestArchitecturalTierSeparation:
         assert segmenter_imports == [], f"Found forbidden segmenter imports in symmetry.py: {segmenter_imports}"
 
     def test_sb_solver_has_no_detector_imports(self):
-        """sb_solver.py must not import from fb_detector or sb_detector in segmenter."""
+        """sb_solver.py must not import from fb_detector or sb_detector in segmenter, and must not re-export pass-throughs."""
         imports = self._get_imported_module_names(sb_solver_mod)
         detector_imports = [
             imp for imp in imports
             if "fb_detector" in imp or "sb_detector" in imp
         ]
         assert detector_imports == [], f"Found forbidden detector imports in sb_solver.py: {detector_imports}"
+        assert not hasattr(sb_solver_mod, "is_center_aligned_sb_solved")
+        assert not hasattr(sb_solver_mod, "extract_sb_placement")
+        assert not hasattr(sb_solver_mod, "get_m_slice_center_offset")
 
     def test_core_has_zero_solver_or_segmenter_imports(self):
         """No module in core may import from solver or segmenter tiers."""
@@ -92,9 +95,15 @@ class TestArchitecturalTierSeparation:
 
     def test_zero_circular_imports_across_tier_orderings(self):
         """Zero circular imports exist regardless of module loading sequence."""
+        import os
         import subprocess
         import sys
         import itertools
+        from pathlib import Path
+
+        src_dir = str(Path(__file__).parent.parent / "src")
+        env = dict(os.environ)
+        env["PYTHONPATH"] = f"{src_dir}:{env.get('PYTHONPATH', '')}" if env.get("PYTHONPATH") else src_dir
 
         orderings = list(itertools.permutations([
             "roux_engine.core",
@@ -109,6 +118,7 @@ class TestArchitecturalTierSeparation:
                 [sys.executable, "-c", code],
                 capture_output=True,
                 text=True,
+                env=env,
             )
             assert res.returncode == 0, (
                 f"Import failed for order {order}: {res.stderr}"
@@ -124,6 +134,7 @@ class TestArchitecturalTierSeparation:
                 [sys.executable, "-c", code],
                 capture_output=True,
                 text=True,
+                env=env,
             )
             assert res.returncode == 0, (
                 f"Pair import failed for {pair}: {res.stderr}"
@@ -134,17 +145,17 @@ class TestArchitecturalTierSeparation:
         assert SolverCanonicalSymmetry is CoreCanonicalSymmetry
 
 
-class TestSolverDelegationToCoreOrientation:
-    """Verifies that solver functions delegate to core.orientation."""
+class TestCoreOrientationPredicateSeam:
+    """Verifies that core.orientation exposes unified state query functions directly."""
 
     def test_extract_sb_placement_delegation(self):
         """extract_sb_placement must return core.orientation.SBPlacement and match core method."""
         c = CubeState().apply_moves("R U R' U'")
         for ori in get_dual_neutral_orientations():
-            solver_p = extract_sb_placement(c, ori)
+            func_p = extract_sb_placement(c, ori)
             core_p = ori.extract_sb_placement(c)
-            assert solver_p == core_p
-            assert isinstance(solver_p, SBPlacement)
+            assert func_p == core_p
+            assert isinstance(func_p, SBPlacement)
 
     def test_extract_sb_placement_string_resolution(self):
         """extract_sb_placement resolves rotation strings and symmetry enums."""

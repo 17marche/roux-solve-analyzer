@@ -3,8 +3,9 @@
 import pytest
 from roux_engine.core.cube import CubeState
 from roux_engine.core.parser import MoveParser
+from roux_engine.core.orientation import get_orientation
 from roux_engine.segmenter.cmll_classifier import CMLLClassifier, CMLL_ALGS
-from roux_engine.segmenter.fb_detector import ALL_BLOCK_DEFINITIONS, DUAL_NEUTRAL_ORIENTATIONS
+from roux_engine.segmenter.fb_detector import DUAL_NEUTRAL_ORIENTATIONS
 
 
 def test_cmll_table_size():
@@ -65,7 +66,7 @@ def test_cmll_detection_in_solve():
         sb_state=cube,
         events=events,
         sb_end_idx=-1,
-        block=ALL_BLOCK_DEFINITIONS[""]
+        block=get_orientation("")
     )
     assert res is not None
     phase, final_state = res
@@ -79,7 +80,7 @@ def test_cmll_detection_in_solve():
 def test_cmll_detection_across_dual_neutral_orientations():
     """Verify CMLL classification works across all dual-neutral orientations."""
     for ori in DUAL_NEUTRAL_ORIENTATIONS:
-        block = ALL_BLOCK_DEFINITIONS[ori]
+        block = get_orientation(ori)
         # Setup Sune in orientation ori
         cube = CubeState()
         if ori:
@@ -101,7 +102,7 @@ def test_cmll_already_solved_skip():
         sb_state=clean_cube,
         events=events,
         sb_end_idx=4,
-        block=ALL_BLOCK_DEFINITIONS[""]
+        block=get_orientation("")
     )
     assert res is not None
     phase, final_state = res

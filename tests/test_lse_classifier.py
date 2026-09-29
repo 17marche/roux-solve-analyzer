@@ -4,87 +4,101 @@ import pytest
 from roux_engine.core.cube import CubeState
 from roux_engine.core.parser import MoveParser
 from roux_engine.core.constants import Edge, Center
+from roux_engine.core.orientation import (
+    get_orientation,
+    get_all_orientations,
+    is_center_axis_aligned,
+    is_eo_solved,
+    count_bad_edges,
+    is_ul_ur_solved,
+)
 from roux_engine.segmenter.lse_classifier import LSEClassifier
-from roux_engine.segmenter.fb_detector import ALL_BLOCK_DEFINITIONS, DUAL_NEUTRAL_ORIENTATIONS, FULL_COLOR_NEUTRAL_ORIENTATIONS
+from roux_engine.segmenter.fb_detector import FULL_COLOR_NEUTRAL_ORIENTATIONS
 
 
 def test_lse_helper_methods_canonical_and_dual_neutral():
-    """Verify is_center_axis_aligned, is_eo_solved, and is_ul_ur_solved across all 24 orientations."""
+    """Verify is_center_axis_aligned, is_eo_solved, and is_ul_ur_solved across all 24 orientations via core seam."""
+    # Verify LSEClassifier has contracted away shallow wrappers
+    assert not hasattr(LSEClassifier, "is_center_axis_aligned")
+    assert not hasattr(LSEClassifier, "count_bad_edges")
+    assert not hasattr(LSEClassifier, "is_eo_solved")
+    assert not hasattr(LSEClassifier, "is_ul_ur_solved")
+
     for ori in FULL_COLOR_NEUTRAL_ORIENTATIONS:
-        block = ALL_BLOCK_DEFINITIONS[ori]
+        block = get_orientation(ori)
         clean_cube = CubeState()
         if ori:
             clean_cube.apply_moves(ori)
 
         # 1. Axis alignment
-        assert LSEClassifier.is_center_axis_aligned(clean_cube, block)
+        assert is_center_axis_aligned(clean_cube, block)
         m_cube = clean_cube.copy().apply_move("M")
-        assert not LSEClassifier.is_center_axis_aligned(m_cube, block)
+        assert not is_center_axis_aligned(m_cube, block)
 
         # 2. EO solved
-        assert LSEClassifier.is_eo_solved(clean_cube, block)
-        assert LSEClassifier.count_bad_edges(clean_cube, block) == 0
+        assert is_eo_solved(clean_cube, block)
+        assert count_bad_edges(clean_cube, block) == 0
         flipped_cube = clean_cube.copy()
         flipped_cube.eo[Edge.UF] = (flipped_cube.eo[Edge.UF] + 1) % 2
-        assert not LSEClassifier.is_eo_solved(flipped_cube, block)
-        assert LSEClassifier.count_bad_edges(flipped_cube, block) == 1
+        assert not is_eo_solved(flipped_cube, block)
+        assert count_bad_edges(flipped_cube, block) == 1
 
         # 3. UL/UR solved (exact placement)
-        assert LSEClassifier.is_ul_ur_solved(clean_cube, block)
+        assert is_ul_ur_solved(clean_cube, block)
         swapped_cube = clean_cube.copy()
         # Swap UL with UF
         swapped_cube.ep[Edge.UL] = block.uf_piece
-        assert not LSEClassifier.is_ul_ur_solved(swapped_cube, block)
+        assert not is_ul_ur_solved(swapped_cube, block)
 
 
 def test_lse_ul_ur_exact_slot_rejection_and_auf_tolerance():
     """Verify rejection of swapped UL/UR and tolerance of relative AUF offsets."""
-    block = ALL_BLOCK_DEFINITIONS[""]
+    block = get_orientation("")
 
     # 1. Swapped UL/UR pieces (UL in UR slot and UR in UL slot) must return False
     c_swap = CubeState()
     c_swap.ep[Edge.UL] = block.ur_piece
     c_swap.ep[Edge.UR] = block.ul_piece
-    assert not LSEClassifier.is_ul_ur_solved(c_swap, block)
+    assert not is_ul_ur_solved(c_swap, block)
 
     # 2. Relative AUF tolerance: UL and UR aligned with corners under pending AUF (e.g. M2 U2 M2 U)
     c_auf = CubeState().apply_moves("M2 U2 M2 U")
-    assert LSEClassifier.is_ul_ur_solved(c_auf, block)
+    assert is_ul_ur_solved(c_auf, block)
 
     # 3. Solved cube with U2 AUF
     c_u2 = CubeState().apply_move("U2")
-    assert LSEClassifier.is_ul_ur_solved(c_u2, block)
+    assert is_ul_ur_solved(c_u2, block)
 
 
 def test_lse_4a_variants():
     """Verify classification of standard EO, EOLR, and EOLR-b with exact assertions and EO preservation."""
-    block = ALL_BLOCK_DEFINITIONS[""]
+    block = get_orientation("")
 
     # 1. EOLR-b: UL and UR are in UL and UR slots (with EO fully solved)
     cube_b = CubeState()
-    assert LSEClassifier.is_eo_solved(cube_b, block)
+    assert is_eo_solved(cube_b, block)
     assert LSEClassifier.classify_4a_variant(cube_b, block) == "eolr_b"
 
     # 2. EOLR: UL and UR are in DF and DB slots (via U M2 U' which preserves all 6 oriented edges)
     cube_eolr = CubeState().apply_moves("U M2 U'")
-    assert LSEClassifier.is_eo_solved(cube_eolr, block)
+    assert is_eo_solved(cube_eolr, block)
     assert LSEClassifier.classify_4a_variant(cube_eolr, block) == "eolr"
 
     # 3. Standard EO: UL and UR are in non-EOLR slots (via U M2 U' M2: UL at UB, UR at UF, all 6 edges oriented)
     cube_std = CubeState().apply_moves("U M2 U' M2")
-    assert LSEClassifier.is_eo_solved(cube_std, block)
+    assert is_eo_solved(cube_std, block)
     assert LSEClassifier.classify_4a_variant(cube_std, block) == "standard_eo"
 
     # 4. Error case: Calling classify_4a_variant on an unsolved EO state (e.g. arrow case from U M' U' M) raises ValueError
     cube_unsolved_eo = CubeState().apply_moves("U M' U' M")
-    assert not LSEClassifier.is_eo_solved(cube_unsolved_eo, block)
+    assert not is_eo_solved(cube_unsolved_eo, block)
     with pytest.raises(ValueError, match="Cannot classify 4a variant when EO is not solved"):
         LSEClassifier.classify_4a_variant(cube_unsolved_eo, block)
 
 
 def test_lse_4c_cases_classification():
     """Verify all 4c case classifications: solved, center_swap, dots, opp_opp, 3_cycle (with AUF tolerance)."""
-    block = ALL_BLOCK_DEFINITIONS[""]
+    block = get_orientation("")
 
     # 1. Solved (including under AUFs)
     cube_solved = CubeState()
@@ -128,7 +142,7 @@ def test_lse_full_phase_detection():
         cmll_state=cube,
         events=events,
         cmll_end_idx=cmll_end_idx,
-        block=ALL_BLOCK_DEFINITIONS[""]
+        block=""
     )
     assert res is not None
     phase, final_state = res
@@ -151,7 +165,7 @@ def test_lse_eolr_b_skip():
         cmll_state=cube,
         events=events,
         cmll_end_idx=4,
-        block=ALL_BLOCK_DEFINITIONS[""]
+        block=""
     )
     assert res is not None
     phase, final_state = res
@@ -169,7 +183,7 @@ def test_lse_already_solved_skip():
         cmll_state=clean_cube,
         events=events,
         cmll_end_idx=len(events) - 1,
-        block=ALL_BLOCK_DEFINITIONS[""]
+        block=""
     )
     assert res is not None
     phase, final_state = res
@@ -179,26 +193,31 @@ def test_lse_already_solved_skip():
     assert phase.step_4c.case == "solved"
 
 
-def test_lse_classifier_delegates_to_roux_orientation():
-    """Verify LSEClassifier methods accept RouxOrientation and string identifiers, delegating to core methods."""
-    from roux_engine.core.orientation import get_orientation, get_all_orientations
+def test_lse_orientation_seam_and_classifier_contraction():
+    """Verify LSE predicates live on core.orientation and LSEClassifier is contracted to classification/detection."""
+    # 1. Verify LSEClassifier does not contain pass-through state wrappers
+    assert not hasattr(LSEClassifier, "is_center_axis_aligned")
+    assert not hasattr(LSEClassifier, "is_eo_solved")
+    assert not hasattr(LSEClassifier, "count_bad_edges")
+    assert not hasattr(LSEClassifier, "is_ul_ur_solved")
 
+    # 2. Test core predicates across all 24 orientations with RouxOrientation instances and rotation strings
     for ori in get_all_orientations():
         cube = CubeState()
         if ori.rotations:
             cube.apply_moves(ori.rotations)
 
         # Accepts RouxOrientation instance
-        assert LSEClassifier.is_center_axis_aligned(cube, ori)
-        assert LSEClassifier.is_eo_solved(cube, ori)
-        assert LSEClassifier.count_bad_edges(cube, ori) == 0
-        assert LSEClassifier.is_ul_ur_solved(cube, ori)
+        assert is_center_axis_aligned(cube, ori)
+        assert is_eo_solved(cube, ori)
+        assert count_bad_edges(cube, ori) == 0
+        assert is_ul_ur_solved(cube, ori)
         assert LSEClassifier.classify_4a_variant(cube, ori) == "eolr_b"
 
         # Accepts string rotation identifier directly
-        assert LSEClassifier.is_center_axis_aligned(cube, ori.rotations)
-        assert LSEClassifier.is_eo_solved(cube, ori.rotations)
-        assert LSEClassifier.count_bad_edges(cube, ori.rotations) == 0
-        assert LSEClassifier.is_ul_ur_solved(cube, ori.rotations)
+        assert is_center_axis_aligned(cube, ori.rotations)
+        assert is_eo_solved(cube, ori.rotations)
+        assert count_bad_edges(cube, ori.rotations) == 0
+        assert is_ul_ur_solved(cube, ori.rotations)
         assert LSEClassifier.classify_4a_variant(cube, ori.rotations) == "eolr_b"
 

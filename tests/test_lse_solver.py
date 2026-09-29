@@ -48,11 +48,12 @@ def test_lse_solved_state():
 
 def test_lse_step_4a_variants():
     """Verify solve_lse correctly identifies and solves standard EO, EOLR, and EOLR-b targets."""
+    from roux_engine.core.orientation import is_eo_solved, is_center_axis_aligned, is_ul_ur_solved
     from roux_engine.segmenter.lse_classifier import LSEClassifier
 
     # 1. Scramble with 4 bad edges (M'): standard EO target
     cube_4bad = CubeState().apply_move("M'")
-    assert not LSEClassifier.is_eo_solved(cube_4bad)
+    assert not is_eo_solved(cube_4bad)
 
     sols_4a = solve_lse(cube_4bad, target="4a")
     assert len(sols_4a) >= 1
@@ -64,8 +65,8 @@ def test_lse_step_4a_variants():
     assert std_sol.moves == ["M"]
 
     sim_std = cube_4bad.copy().apply_moves(std_sol.moves)
-    assert LSEClassifier.is_eo_solved(sim_std)
-    assert LSEClassifier.is_center_axis_aligned(sim_std)
+    assert is_eo_solved(sim_std)
+    assert is_center_axis_aligned(sim_std)
 
     # 2. Test EOLR target: UL and UR must end up in bottom slots DF and DB
     # Test on a state where EOLR is reachable
@@ -74,8 +75,8 @@ def test_lse_step_4a_variants():
     assert len(eolr_sols) >= 1
     eolr_sol = eolr_sols[0]
     sim_eolr = cube_arrow.copy().apply_moves(eolr_sol.moves)
-    assert LSEClassifier.is_eo_solved(sim_eolr)
-    assert LSEClassifier.is_center_axis_aligned(sim_eolr)
+    assert is_eo_solved(sim_eolr)
+    assert is_center_axis_aligned(sim_eolr)
     assert LSEClassifier.classify_4a_variant(sim_eolr) in ("eolr", "eolr_b")
 
     # 3. Test EOLR-b target: UL and UR must end up directly in top slots
@@ -83,21 +84,21 @@ def test_lse_step_4a_variants():
     assert len(eolrb_sols) >= 1
     eolrb_sol = eolrb_sols[0]
     sim_eolrb = cube_arrow.copy().apply_moves(eolrb_sol.moves)
-    assert LSEClassifier.is_eo_solved(sim_eolrb)
-    assert LSEClassifier.is_center_axis_aligned(sim_eolrb)
-    assert LSEClassifier.is_ul_ur_solved(sim_eolrb)
+    assert is_eo_solved(sim_eolrb)
+    assert is_center_axis_aligned(sim_eolrb)
+    assert is_ul_ur_solved(sim_eolrb)
     assert LSEClassifier.classify_4a_variant(sim_eolrb) == "eolr_b"
 
 
 def test_lse_step_4b_ul_ur_placement():
     """Verify solve_lse correctly solves Step 4b (UL/UR edge placement into top slots)."""
-    from roux_engine.segmenter.lse_classifier import LSEClassifier
+    from roux_engine.core.orientation import is_eo_solved, is_center_axis_aligned, is_ul_ur_solved
 
     # 1. Start from EOLR state where EO is solved and UL/UR are in DF/DB
     # e.g. "U M2 U'" puts UL/UR into DF/DB with EO solved
     cube_eolr = CubeState().apply_moves("U M2 U'")
-    assert LSEClassifier.is_eo_solved(cube_eolr)
-    assert not LSEClassifier.is_ul_ur_solved(cube_eolr)
+    assert is_eo_solved(cube_eolr)
+    assert not is_ul_ur_solved(cube_eolr)
 
     sols_4b = solve_lse(cube_eolr, target="4b")
     assert len(sols_4b) >= 1
@@ -107,13 +108,13 @@ def test_lse_step_4b_ul_ur_placement():
     assert sol_4b.move_count > 0
 
     sim_4b = cube_eolr.copy().apply_moves(sol_4b.moves)
-    assert LSEClassifier.is_eo_solved(sim_4b)
-    assert LSEClassifier.is_center_axis_aligned(sim_4b)
-    assert LSEClassifier.is_ul_ur_solved(sim_4b)
+    assert is_eo_solved(sim_4b)
+    assert is_center_axis_aligned(sim_4b)
+    assert is_ul_ur_solved(sim_4b)
 
     # 2. If already solved 4b, returns 0 moves
     cube_4b_solved = CubeState().apply_moves("M2 U2 M2 U2") # opp_opp: 4b is solved, 4c unsolved
-    assert LSEClassifier.is_ul_ur_solved(cube_4b_solved)
+    assert is_ul_ur_solved(cube_4b_solved)
     sols_4b_skip = solve_lse(cube_4b_solved, target="4b")
     assert len(sols_4b_skip) == 1
     assert sols_4b_skip[0].move_count == 0

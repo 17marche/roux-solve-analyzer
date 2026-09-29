@@ -4,30 +4,42 @@ import pytest
 from roux_engine.core.cube import CubeState
 from roux_engine.core.parser import MoveParser
 from roux_engine.core.constants import Corner, Edge
+from roux_engine.core.orientation import (
+    get_orientation,
+    is_sb_solved,
+    is_dr_solved,
+    is_back_pair_solved,
+    is_front_pair_solved,
+)
 from roux_engine.segmenter.sb_detector import SBDetector
-from roux_engine.segmenter.fb_detector import ALL_BLOCK_DEFINITIONS
 
 
 def test_sb_detector_canonical():
-    """Test full SB detection on canonical solve and exact orientation rejection."""
+    """Test full SB detection on canonical solve and exact orientation rejection via core seam."""
     clean_cube = CubeState()
-    assert SBDetector.is_canonical_sb_solved(clean_cube)
-    assert SBDetector.is_dr_solved(clean_cube)
-    assert SBDetector.is_back_pair_solved(clean_cube)
-    assert SBDetector.is_front_pair_solved(clean_cube)
-    assert SBDetector.is_right_1x2x3_block_solved(clean_cube)
+    assert is_sb_solved(clean_cube)
+    assert is_dr_solved(clean_cube)
+    assert is_back_pair_solved(clean_cube)
+    assert is_front_pair_solved(clean_cube)
+
+    # Verify SBDetector has contracted away all shallow wrappers
+    assert not hasattr(SBDetector, "is_canonical_sb_solved")
+    assert not hasattr(SBDetector, "is_dr_solved")
+    assert not hasattr(SBDetector, "is_back_pair_solved")
+    assert not hasattr(SBDetector, "is_front_pair_solved")
+    assert not hasattr(SBDetector, "is_right_1x2x3_block_solved")
 
     # Twisted corner at DFR should NOT be considered solved
     twisted_cube = CubeState()
     twisted_cube.co[Corner.DFR] = 1
-    assert not SBDetector.is_front_pair_solved(twisted_cube)
-    assert not SBDetector.is_right_1x2x3_block_solved(twisted_cube)
+    assert not is_front_pair_solved(twisted_cube)
+    assert not is_sb_solved(twisted_cube)
 
     # Flipped edge at FR should NOT be considered solved
     flipped_cube = CubeState()
     flipped_cube.eo[Edge.FR] = 1
-    assert not SBDetector.is_front_pair_solved(flipped_cube)
-    assert not SBDetector.is_right_1x2x3_block_solved(flipped_cube)
+    assert not is_front_pair_solved(flipped_cube)
+    assert not is_sb_solved(flipped_cube)
 
 
 def test_sb_pair_ordering_back_first():
@@ -41,17 +53,17 @@ def test_sb_pair_ordering_back_first():
     cube = CubeState().apply_moves(inv)
 
     # Verify that initial state has ALL SB pieces completely scrambled/unsolved
-    assert not SBDetector.is_dr_solved(cube)
-    assert not SBDetector.is_back_pair_solved(cube)
-    assert not SBDetector.is_front_pair_solved(cube)
-    assert not SBDetector.is_canonical_sb_solved(cube)
+    assert not is_dr_solved(cube)
+    assert not is_back_pair_solved(cube)
+    assert not is_front_pair_solved(cube)
+    assert not is_sb_solved(cube)
 
     events = MoveParser.parse_string(sb_moves)
     res = SBDetector.detect_sb(
         fb_state=cube,
         events=events,
         fb_end_idx=-1,
-        block=ALL_BLOCK_DEFINITIONS[""]
+        block=""
     )
     assert res is not None
     phase, final_state = res
@@ -62,7 +74,7 @@ def test_sb_pair_ordering_back_first():
     assert phase.pair2_idx == 10
     assert phase.sb_square_idx == 6
     assert phase.dr_placement_idx == 6
-    assert SBDetector.is_canonical_sb_solved(final_state)
+    assert is_sb_solved(final_state)
 
 
 def test_sb_rotations_and_ergonomics_tracking():
@@ -79,7 +91,7 @@ def test_sb_rotations_and_ergonomics_tracking():
         fb_state=cube,
         events=events,
         fb_end_idx=-1,
-        block=ALL_BLOCK_DEFINITIONS[""]
+        block=""
     )
     assert res is not None
     phase, _ = res
@@ -95,10 +107,10 @@ def test_sb_concurrent_partial_progress():
     inv_front = MoveParser.invert_moves(front_pair_solve)
 
     fb_state = CubeState().apply_moves(inv_front)
-    assert SBDetector.is_dr_solved(fb_state)
-    assert SBDetector.is_back_pair_solved(fb_state)
-    assert not SBDetector.is_front_pair_solved(fb_state)
-    assert not SBDetector.is_canonical_sb_solved(fb_state)
+    assert is_dr_solved(fb_state)
+    assert is_back_pair_solved(fb_state)
+    assert not is_front_pair_solved(fb_state)
+    assert not is_sb_solved(fb_state)
 
     # Full events sequence covering previous FB moves (indices 0..4) and subsequent SB moves (indices 5..8)
     fb_moves = "D' F' L2 D B"
@@ -108,7 +120,7 @@ def test_sb_concurrent_partial_progress():
         fb_state=fb_state,
         events=full_events,
         fb_end_idx=4,
-        block=ALL_BLOCK_DEFINITIONS[""]
+        block=""
     )
     assert res is not None
     phase, final_state = res
@@ -122,7 +134,7 @@ def test_sb_concurrent_partial_progress():
     assert phase.pair2_idx == 8
     assert phase.move_count_stm == 4
     assert phase.moves_str == "U R U' R'"
-    assert SBDetector.is_canonical_sb_solved(final_state)
+    assert is_sb_solved(final_state)
 
 
 def test_sb_already_fully_solved_at_fb_end():
@@ -135,7 +147,7 @@ def test_sb_already_fully_solved_at_fb_end():
         fb_state=clean_cube,
         events=events,
         fb_end_idx=4,
-        block=ALL_BLOCK_DEFINITIONS[""]
+        block=""
     )
     assert res is not None
     phase, final_state = res
@@ -146,27 +158,42 @@ def test_sb_already_fully_solved_at_fb_end():
     assert phase.pair2_idx == 4
     assert phase.pair1_type == "both_simultaneous"
     assert phase.moves_str == ""
-    assert SBDetector.is_canonical_sb_solved(final_state)
+    assert is_sb_solved(final_state)
 
 
-def test_sb_detector_delegates_to_roux_orientation():
-    """Verify SBDetector methods delegate to RouxOrientation across orientations and accept string identifiers."""
-    from roux_engine.core.orientation import get_orientation, get_all_orientations
+def test_sb_orientation_seam_and_detector_contraction():
+    """Verify SB predicates live on core.orientation and SBDetector is contracted strictly to segmentation."""
+    from roux_engine.core.orientation import (
+        get_all_orientations,
+        is_dr_solved,
+        is_back_pair_solved,
+        is_front_pair_solved,
+        is_sb_solved,
+    )
 
-    # 1. Test across all 24 orientations with RouxOrientation instances
+    # 1. Verify SBDetector only retains detect_sb
+    assert hasattr(SBDetector, "detect_sb")
+    assert not hasattr(SBDetector, "is_canonical_sb_solved")
+    assert not hasattr(SBDetector, "is_dr_solved")
+    assert not hasattr(SBDetector, "is_back_pair_solved")
+    assert not hasattr(SBDetector, "is_front_pair_solved")
+    assert not hasattr(SBDetector, "is_right_1x2x3_block_solved")
+
+    # 2. Test core predicates across all 24 orientations with RouxOrientation instances and rotation strings
     for ori in get_all_orientations():
         cube = CubeState()
         if ori.rotations:
             cube.apply_moves(ori.rotations)
 
-        assert SBDetector.is_dr_solved(cube, ori)
-        assert SBDetector.is_back_pair_solved(cube, ori)
-        assert SBDetector.is_front_pair_solved(cube, ori)
-        assert SBDetector.is_right_1x2x3_block_solved(cube, ori)
+        assert is_dr_solved(cube, ori)
+        assert is_back_pair_solved(cube, ori)
+        assert is_front_pair_solved(cube, ori)
+        assert is_sb_solved(cube, ori)
 
         # Also accepts rotation string identifier directly
-        assert SBDetector.is_dr_solved(cube, ori.rotations)
-        assert SBDetector.is_back_pair_solved(cube, ori.rotations)
-        assert SBDetector.is_front_pair_solved(cube, ori.rotations)
-        assert SBDetector.is_right_1x2x3_block_solved(cube, ori.rotations)
+        assert is_dr_solved(cube, ori.rotations)
+        assert is_back_pair_solved(cube, ori.rotations)
+        assert is_front_pair_solved(cube, ori.rotations)
+        assert is_sb_solved(cube, ori.rotations)
+
 

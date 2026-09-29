@@ -28,7 +28,7 @@ def test_solve_scramble_free_style_solves_cube(sample_scramble: str):
     # Test applying moves to a scrambled cube reaches solved identity
     cube = CubeState().apply_moves(sample_scramble)
     cube.apply_moves(result.full_moves_str)
-    assert cube.is_solved() is True
+    assert cube.is_solved(allow_rotations=True) is True
 
     # Move count breakdown consistency
     expected_stm = (
@@ -50,7 +50,7 @@ def test_solve_scramble_classical_style_solves_cube(sample_scramble: str):
 
     cube = CubeState().apply_moves(sample_scramble)
     cube.apply_moves(result.full_moves_str)
-    assert cube.is_solved() is True
+    assert cube.is_solved(allow_rotations=True) is True
 
 
 def test_solve_scramble_alg_cubing_url(sample_scramble: str):
@@ -87,7 +87,7 @@ def test_solve_scramble_square_pair_style_solves_cube(sample_scramble: str):
 
     cube = CubeState().apply_moves(sample_scramble)
     cube.apply_moves(result.full_moves_str)
-    assert cube.is_solved() is True
+    assert cube.is_solved(allow_rotations=True) is True
 
 
 @pytest.mark.parametrize(

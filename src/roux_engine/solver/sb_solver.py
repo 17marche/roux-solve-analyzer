@@ -135,40 +135,6 @@ class SBSolution:
     e_stm: Optional[float] = None
 
 
-def get_m_slice_center_offset(
-    cube: CubeState,
-    orientation: Union[str, RouxOrientation, Any] = "",
-    *,
-    block: Optional[Any] = None,
-) -> int:
-    """Determines the M-slice rotation offset in {0, 1, 2, 3} for the cube relative to orientation.
-    0: Aligned with First Block.
-    1: Rotated by M.
-    2: Rotated by M2.
-    3: Rotated by M'.
-    """
-    target = block if block is not None else orientation
-    ori = get_orientation(target)
-    return ori.get_m_slice_center_offset(cube)
-
-
-def is_center_aligned_sb_solved(
-    cube: CubeState,
-    orientation: Union[str, RouxOrientation, Any] = "",
-    *,
-    block: Optional[Any] = None,
-) -> bool:
-    """Checks if Center-Aligned Second Block is strictly solved:
-    1. All 5 Second Block pieces (DR, FR, BR, DFR, DBR) are solved.
-    2. M-slice centers (U, D, F, B) are aligned with the U/D axis (offset 0 or 2).
-
-    Delegates directly to RouxOrientation.is_center_aligned_sb_solved.
-    """
-    target = block if block is not None else orientation
-    ori = get_orientation(target)
-    return ori.is_center_aligned_sb_solved(cube)
-
-
 # -----------------------------------------------------------------------------
 # IDA* Search Engine
 # -----------------------------------------------------------------------------
@@ -206,18 +172,6 @@ from .symmetry import (
     is_fb_solved_for_symmetry,
     translate_moves_to_original,
 )
-
-
-def extract_sb_placement(
-    cube: CubeState,
-    orientation: Union[str, RouxOrientation, Any] = "",
-    *,
-    block: Optional[Any] = None,
-) -> SBPlacement:
-    """Extracts SBPlacement relative to a given orientation, delegating to RouxOrientation."""
-    target = block if block is not None else orientation
-    ori = get_orientation(target)
-    return ori.extract_sb_placement(cube)
 
 
 class SBSolver:
@@ -1060,7 +1014,7 @@ class SBSolver:
         ori_str = sym.value
 
         # Extract piece coordinates and center offset
-        placement = extract_sb_placement(cube, ori)
+        placement = ori.extract_sb_placement(cube)
         c_idx = SBIndexer.encode_corners(
             placement.dfr_slot, placement.dfr_co,
             placement.dbr_slot, placement.dbr_co
@@ -1070,7 +1024,7 @@ class SBSolver:
             placement.fr_slot, placement.fr_eo,
             placement.br_slot, placement.br_eo
         )
-        center_off = get_m_slice_center_offset(cube, ori)
+        center_off = ori.get_m_slice_center_offset(cube)
 
         VALID_STYLES = {"all", "free", "square_pair", "classical"}
         if style not in VALID_STYLES:
@@ -1214,9 +1168,6 @@ __all__ = [
     "SBSolution",
     "SBSolver",
     "solve_sb",
-    "is_center_aligned_sb_solved",
-    "get_m_slice_center_offset",
-    "extract_sb_placement",
 ]
 
 

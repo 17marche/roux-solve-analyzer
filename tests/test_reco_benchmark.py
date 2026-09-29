@@ -10,15 +10,15 @@ from roux_engine.data.loader import RecoDatasetLoader, SolveRecord
 from roux_engine.segmenter.segmenter import RouxSegmenter
 from roux_engine.core.parser import MoveParser
 from roux_engine.core.cube import CubeState
-from roux_engine.solver.sb_solver import solve_sb, is_center_aligned_sb_solved, SBSolution
+from roux_engine.solver.sb_solver import solve_sb, SBSolution
 from roux_engine.solver.sb_pdb_generator import SB_MOVESET
 from roux_engine.solver.lse_solver import (
     solve_lse,
     solve_lse_paths,
     resolve_lse_orientation,
 )
-from roux_engine.core.orientation import RouxOrientation
-from roux_engine.segmenter.fb_detector import ALL_BLOCK_DEFINITIONS, FBDetector, BlockDefinition
+from roux_engine.core.orientation import RouxOrientation, is_center_aligned_sb_solved
+from roux_engine.segmenter.fb_detector import FBDetector
 
 
 DATASET_PATH = os.path.join(os.path.dirname(__file__), "..", "data", "roux_solves.json")
@@ -168,7 +168,7 @@ class SBBenchmarkCase:
     record: SolveRecord
     fb_cube: CubeState
     human_sb_stm: int
-    block: BlockDefinition
+    block: RouxOrientation
 
 
 @pytest.fixture(scope="module")

@@ -9,7 +9,7 @@ from ..core.cube import CubeState
 from ..core.parser import MoveEvent, MoveParser
 from ..core.orientation import RouxOrientation, get_orientation, get_all_orientations
 from .models import CMLLPhase
-from .fb_detector import BlockDefinition, ALL_BLOCK_DEFINITIONS, FULL_COLOR_NEUTRAL_ORIENTATIONS
+from .fb_detector import FULL_COLOR_NEUTRAL_ORIENTATIONS
 
 
 
@@ -149,7 +149,7 @@ class CMLLClassifier:
         return cls._TABLE
 
     @staticmethod
-    def are_corners_solved(state: CubeState, block: Union[RouxOrientation, str, Any] = ALL_BLOCK_DEFINITIONS[""]) -> bool:
+    def are_corners_solved(state: CubeState, block: Union[RouxOrientation, str, Any] = "") -> bool:
         """Checks if all 4 U corners are oriented and permuted correctly relative to each other (up to AUF)."""
         ori = get_orientation(block)
         rotations = ori.rotations
@@ -165,7 +165,7 @@ class CMLLClassifier:
     def classify_state(
         cls,
         state: CubeState,
-        block: Union[RouxOrientation, str, Any] = ALL_BLOCK_DEFINITIONS[""]
+        block: Union[RouxOrientation, str, Any] = ""
     ) -> Tuple[str, str, str]:
         """Classifies the CMLL case from the current state and orientation basis.
         
@@ -228,7 +228,7 @@ class CMLLClassifier:
         sb_state: CubeState,
         events: Sequence[MoveEvent],
         sb_end_idx: int,
-        block: Union[RouxOrientation, str, Any] = ALL_BLOCK_DEFINITIONS[""]
+        block: Union[RouxOrientation, str, Any] = ""
     ) -> Optional[Tuple[CMLLPhase, CubeState]]:
         """Segments CMLL execution starting directly from sb_state at sb_end_idx until corners are solved.
         

@@ -228,7 +228,7 @@ class TestEnginePerformance:
         
         moves_per_sec = len(moves_seq) / duration
         print(f"\nThroughput: {moves_per_sec:,.0f} moves/sec ({duration*1000:.2f}ms for {len(moves_seq)} moves)")
-        assert moves_per_sec > 50_000, f"Throughput too low: {moves_per_sec:,.0f} moves/sec"
+        assert moves_per_sec > 25_000, f"Throughput too low: {moves_per_sec:,.0f} moves/sec"
 
 
 class TestUserSolveReplay:

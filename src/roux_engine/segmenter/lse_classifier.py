@@ -9,7 +9,6 @@ from ..core.cube import CubeState
 from ..core.parser import MoveEvent, MoveParser
 from ..core.orientation import RouxOrientation, get_orientation
 from .models import LSEPhase, Step4a, Step4b, Step4c
-from .fb_detector import BlockDefinition, ALL_BLOCK_DEFINITIONS
 
 
 LSE_EDGES = (Edge.UF, Edge.UB, Edge.UL, Edge.UR, Edge.DF, Edge.DB)
@@ -20,28 +19,8 @@ AUF_MOVES = ("", "U", "U2", "U'")
 class LSEClassifier:
     """Classifies LSE micro-steps: 4a (EO/EOLR/EOLR-b), 4b (UL/UR), and 4c (M-slice permutation)."""
 
-    @staticmethod
-    def is_center_axis_aligned(state: CubeState, block: Union[RouxOrientation, str, Any] = ALL_BLOCK_DEFINITIONS[""]) -> bool:
-        """Checks if U and D centers occupy the U/D axis defined by block."""
-        return get_orientation(block).is_center_axis_aligned(state)
-
-    @staticmethod
-    def count_bad_edges(state: CubeState, block: Union[RouxOrientation, str, Any] = ALL_BLOCK_DEFINITIONS[""]) -> int:
-        """Counts how many of the 6 LSE edges have bad orientation."""
-        return get_orientation(block).count_bad_edges(state)
-
-    @staticmethod
-    def is_eo_solved(state: CubeState, block: Union[RouxOrientation, str, Any] = ALL_BLOCK_DEFINITIONS[""]) -> bool:
-        """Checks if all 6 LSE edges are oriented along the U/D axis."""
-        return get_orientation(block).is_eo_solved(state)
-
-    @staticmethod
-    def is_ul_ur_solved(state: CubeState, block: Union[RouxOrientation, str, Any] = ALL_BLOCK_DEFINITIONS[""]) -> bool:
-        """Checks if UL and UR edges are placed in their correct slots relative to U-layer corners (up to AUF)."""
-        return get_orientation(block).is_ul_ur_solved(state)
-
     @classmethod
-    def classify_4a_variant(cls, state: CubeState, block: Union[RouxOrientation, str, Any] = ALL_BLOCK_DEFINITIONS[""]) -> str:
+    def classify_4a_variant(cls, state: CubeState, block: Union[RouxOrientation, str, Any] = "") -> str:
         """Classifies EO completion into 'eolr_b', 'eolr', or 'standard_eo'.
         
         Requires all 6 LSE edges to be oriented along the U/D axis.
@@ -63,7 +42,7 @@ class LSEClassifier:
         return "standard_eo"
 
     @classmethod
-    def is_fully_solved(cls, state: CubeState, block: Union[RouxOrientation, str, Any] = ALL_BLOCK_DEFINITIONS[""]) -> bool:
+    def is_fully_solved(cls, state: CubeState, block: Union[RouxOrientation, str, Any] = "") -> bool:
         """Checks if the cube is fully solved relative to the block orientation."""
         ori = get_orientation(block)
         target = CubeState()
@@ -72,7 +51,7 @@ class LSEClassifier:
         return state == target
 
     @classmethod
-    def classify_4c_case(cls, state: CubeState, block: Union[RouxOrientation, str, Any] = ALL_BLOCK_DEFINITIONS[""]) -> str:
+    def classify_4c_case(cls, state: CubeState, block: Union[RouxOrientation, str, Any] = "") -> str:
         """Classifies the initial 4c permutation case:
         - solved: all 4 M-slice edges and centers solved
         - center_swap: M2 center swap
@@ -146,7 +125,7 @@ class LSEClassifier:
         cmll_state: CubeState,
         events: Sequence[MoveEvent],
         cmll_end_idx: int,
-        block: Union[RouxOrientation, str, Any] = ALL_BLOCK_DEFINITIONS[""]
+        block: Union[RouxOrientation, str, Any] = ""
     ) -> Optional[Tuple[LSEPhase, CubeState]]:
         """Segments LSE into 4a (EO/EOLR), 4b (UL/UR), and 4c (M-slice permutation) starting from cmll_state.
         

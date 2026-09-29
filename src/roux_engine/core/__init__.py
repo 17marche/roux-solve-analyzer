@@ -20,10 +20,12 @@ from .orientation import (
     is_back_pair_solved,
     is_front_pair_solved,
     is_center_aligned_sb_solved,
+    is_center_axis_aligned,
     is_eo_solved,
     is_ul_ur_solved,
     count_bad_edges,
     get_m_slice_center_offset,
+    extract_sb_placement,
 )
 
 __all__ = [
@@ -54,8 +56,10 @@ __all__ = [
     "is_back_pair_solved",
     "is_front_pair_solved",
     "is_center_aligned_sb_solved",
+    "is_center_axis_aligned",
     "is_eo_solved",
     "is_ul_ur_solved",
     "count_bad_edges",
     "get_m_slice_center_offset",
+    "extract_sb_placement",
 ]

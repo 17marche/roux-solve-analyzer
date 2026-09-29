@@ -23,6 +23,7 @@ from roux_engine.core.orientation import (
     is_ul_ur_solved,
     count_bad_edges,
     get_m_slice_center_offset,
+    extract_sb_placement,
 )
 
 
@@ -349,9 +350,9 @@ class TestSBPlacementExtraction:
         assert p.dr_slot != Edge.DR or p.fr_slot != Edge.FR
 
     def test_parity_with_existing_sb_solver_extractor(self):
-        """Extract placement produces byte-exact matching results with legacy sb_solver extractor."""
-        from roux_engine.solver.sb_solver import extract_sb_placement as legacy_extract
-        from roux_engine.segmenter.fb_detector import ALL_BLOCK_DEFINITIONS
+        """Top-level extract_sb_placement matches RouxOrientation method, and sb_solver has contracted."""
+        import roux_engine.solver.sb_solver as sb_solver_mod
+        assert not hasattr(sb_solver_mod, "extract_sb_placement")
 
         test_scrambles = [
             "",
@@ -362,7 +363,6 @@ class TestSBPlacementExtraction:
         ]
         for ori in ["", "y", "y2", "y'", "x2", "x2 y", "x2 y2", "x2 y'"]:
             o = get_orientation(ori)
-            legacy_block = ALL_BLOCK_DEFINITIONS[ori]
             for scramble in test_scrambles:
                 c = CubeState()
                 if ori:
@@ -371,18 +371,18 @@ class TestSBPlacementExtraction:
                     c.apply_moves(scramble)
 
                 new_p = o.extract_sb_placement(c)
-                old_p = legacy_extract(c, legacy_block)
+                top_p = extract_sb_placement(c, o)
 
-                assert new_p.dr_slot == old_p.dr_slot
-                assert new_p.dr_eo == old_p.dr_eo
-                assert new_p.fr_slot == old_p.fr_slot
-                assert new_p.fr_eo == old_p.fr_eo
-                assert new_p.br_slot == old_p.br_slot
-                assert new_p.br_eo == old_p.br_eo
-                assert new_p.dfr_slot == old_p.dfr_slot
-                assert new_p.dfr_co == old_p.dfr_co
-                assert new_p.dbr_slot == old_p.dbr_slot
-                assert new_p.dbr_co == old_p.dbr_co
+                assert new_p.dr_slot == top_p.dr_slot
+                assert new_p.dr_eo == top_p.dr_eo
+                assert new_p.fr_slot == top_p.fr_slot
+                assert new_p.fr_eo == top_p.fr_eo
+                assert new_p.br_slot == top_p.br_slot
+                assert new_p.br_eo == top_p.br_eo
+                assert new_p.dfr_slot == top_p.dfr_slot
+                assert new_p.dfr_co == top_p.dfr_co
+                assert new_p.dbr_slot == top_p.dbr_slot
+                assert new_p.dbr_co == top_p.dbr_co
 
     def test_canonical_corner_naming_aliases(self):
         """Verify dfl_piece/dfl_co and dbr_piece/dbr_co aliases match dlf and drb properties."""

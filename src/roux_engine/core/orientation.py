@@ -827,6 +827,22 @@ def get_m_slice_center_offset(
     return get_orientation(orientation).get_m_slice_center_offset(cube)
 
 
+def is_center_axis_aligned(
+    cube: CubeState,
+    orientation: Optional[OrientationId] = "",
+) -> bool:
+    """Checks if U and D centers occupy the U/D axis defined by orientation."""
+    return get_orientation(orientation).is_center_axis_aligned(cube)
+
+
+def extract_sb_placement(
+    cube: CubeState,
+    orientation: Optional[OrientationId] = "",
+) -> SBPlacement:
+    """Extracts the permutation and orientation states of all 5 Second Block cubies."""
+    return get_orientation(orientation).extract_sb_placement(cube)
+
+
 __all__ = [
     "CanonicalSymmetry",
     "SBPlacement",
@@ -844,9 +860,11 @@ __all__ = [
     "is_back_pair_solved",
     "is_front_pair_solved",
     "is_center_aligned_sb_solved",
+    "is_center_axis_aligned",
     "is_eo_solved",
     "is_ul_ur_solved",
     "count_bad_edges",
     "get_m_slice_center_offset",
+    "extract_sb_placement",
 ]
 

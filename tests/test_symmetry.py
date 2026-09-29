@@ -5,7 +5,7 @@ from roux_engine.core.constants import Color, Edge, Corner
 from roux_engine.core.cube import CubeState
 from roux_engine.core.moves import MOVES
 from roux_engine.core.parser import MoveParser
-from roux_engine.segmenter.fb_detector import FBDetector, ALL_BLOCK_DEFINITIONS
+from roux_engine.core.orientation import is_fb_solved
 from roux_engine.solver.fb_indexer import FBIndexer, FBPlacement
 from roux_engine.solver.fb_pdb import FBPDB
 from roux_engine.solver.symmetry import (
@@ -195,7 +195,7 @@ class TestCubeConjugation:
         for sym in get_all_symmetries():
             clean = CubeState()
             c_canon = conjugate_cube(clean, sym)
-            assert FBDetector.is_canonical_fb_solved(c_canon), f"Failed for symmetry {sym.name}"
+            assert is_fb_solved(c_canon), f"Failed for symmetry {sym.name}"
             assert FBIndexer.encode(c_canon) == 0
             assert fb_pdb.get_distance(c_canon) == 0
 
@@ -206,7 +206,7 @@ class TestCubeConjugation:
             if sym.inspection_rotation:
                 inspected.apply_moves(sym.inspection_rotation)
             c_canon = conjugate_cube(inspected, sym, inspected=True)
-            assert FBDetector.is_canonical_fb_solved(c_canon)
+            assert is_fb_solved(c_canon)
             assert FBIndexer.encode(c_canon) == 0
             assert fb_pdb.get_distance(c_canon) == 0
 

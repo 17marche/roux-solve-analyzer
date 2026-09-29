@@ -9,7 +9,6 @@ from ..core.cube import CubeState
 from ..core.parser import MoveEvent, MoveParser
 from ..core.orientation import RouxOrientation, get_orientation
 from .models import SBPhase
-from .fb_detector import BlockDefinition, ALL_BLOCK_DEFINITIONS
 
 
 ROUX_SB_ERGONOMIC_PREFIXES = ("R", "r", "M", "U", "u")
@@ -18,38 +17,13 @@ ROUX_SB_ERGONOMIC_PREFIXES = ("R", "r", "M", "U", "u")
 class SBDetector:
     """Detects Second Block completion, tracks sub-phases (DR, Pair 1, Pair 2), and flags rotations."""
 
-    @staticmethod
-    def is_canonical_sb_solved(state: CubeState) -> bool:
-        """Checks if the canonical Right Second Block (DR, FR, BR, DFR, DRB) is solved."""
-        return get_orientation("").is_sb_solved(state)
-
-    @staticmethod
-    def is_dr_solved(state: CubeState, block: Union[RouxOrientation, str, Any] = ALL_BLOCK_DEFINITIONS[""]) -> bool:
-        """Checks if DR edge is solved in its designated slot with exact piece ID and orientation."""
-        return get_orientation(block).is_dr_solved(state)
-
-    @staticmethod
-    def is_back_pair_solved(state: CubeState, block: Union[RouxOrientation, str, Any] = ALL_BLOCK_DEFINITIONS[""]) -> bool:
-        """Checks if Right back pair (BR edge + DRB corner) is solved with exact piece IDs and orientations."""
-        return get_orientation(block).is_back_pair_solved(state)
-
-    @staticmethod
-    def is_front_pair_solved(state: CubeState, block: Union[RouxOrientation, str, Any] = ALL_BLOCK_DEFINITIONS[""]) -> bool:
-        """Checks if Right front pair (FR edge + DFR corner) is solved with exact piece IDs and orientations."""
-        return get_orientation(block).is_front_pair_solved(state)
-
-    @staticmethod
-    def is_right_1x2x3_block_solved(state: CubeState, block: Union[RouxOrientation, str, Any] = ALL_BLOCK_DEFINITIONS[""]) -> bool:
-        """Checks if all 5 Right Block pieces are simultaneously solved with exact piece IDs and orientations."""
-        return get_orientation(block).is_sb_solved(state)
-
     @classmethod
     def detect_sb(
         cls,
         fb_state: CubeState,
         events: Sequence[MoveEvent],
         fb_end_idx: int,
-        block: Union[RouxOrientation, str, Any] = ALL_BLOCK_DEFINITIONS[""]
+        block: Union[RouxOrientation, str, Any] = ""
     ) -> Optional[Tuple[SBPhase, CubeState]]:
         """Tracks the solve starting directly from fb_state at fb_end_idx until SB is completed.
         
