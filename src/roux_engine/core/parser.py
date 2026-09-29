@@ -67,7 +67,7 @@ class MoveParser:
         return norm in MOVES
 
     @classmethod
-    def parse_string(cls, moves_str: str) -> List[MoveEvent]:
+    def parse_string(cls, moves_str: str, strict: bool = False) -> List[MoveEvent]:
         """Parses a space-separated or formatted move string into MoveEvent objects."""
         # Strip C-style comments (/* ... */) and line comments (// ...)
         text = re.sub(r"//.*", "", moves_str)
@@ -88,11 +88,13 @@ class MoveParser:
             # Only add if it's a recognized move
             if cls.is_valid_move_token(normalized):
                 events.append(MoveEvent(move=normalized, raw_token=raw))
+            elif strict:
+                raise ValueError(f"Invalid cube move token: '{raw}'")
 
         return events
 
     @classmethod
-    def parse_smart_cube_stream(cls, stream: List[Dict[str, Any]]) -> List[MoveEvent]:
+    def parse_smart_cube_stream(cls, stream: List[Dict[str, Any]], strict: bool = False) -> List[MoveEvent]:
         """Parses a smart-cube stream array into MoveEvents with delta times calculated."""
         events: List[MoveEvent] = []
         prev_t: Optional[int] = None
@@ -100,8 +102,14 @@ class MoveParser:
         for item in stream:
             raw_move = item.get("move") or item.get("m") or ""
             if not raw_move:
+                if strict:
+                    raise ValueError("Stream item missing move property")
                 continue
             
+            normalized = cls.normalize_token(raw_move)
+            if strict and not cls.is_valid_move_token(normalized):
+                raise ValueError(f"Invalid cube move token: '{raw_move}'")
+
             t_ms = item.get("timestamp_ms")
             if t_ms is None:
                 t_ms = item.get("t_ms")
@@ -115,7 +123,6 @@ class MoveParser:
                 delta_ms = max(0, t_ms - prev_t)
             prev_t = t_ms
 
-            normalized = cls.normalize_token(raw_move)
             events.append(MoveEvent(
                 move=normalized,
                 raw_token=raw_move,
