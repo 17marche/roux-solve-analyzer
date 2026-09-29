@@ -106,3 +106,120 @@ class TestCliFlow:
         captured = capsys.readouterr()
         assert "Error" in captured.err
 
+    def test_flow_direct_json_string_argument(self, capsys):
+        stream_json = json.dumps([
+            {"move": "R", "timestamp_ms": 100},
+            {"move": "U", "timestamp_ms": 250},
+            {"move": "R'", "timestamp_ms": 400},
+            {"move": "U'", "timestamp_ms": 550},
+        ])
+        code = main(["flow", stream_json, "--json", "--profile", "2H", "--tempo", "0.2"])
+        assert code == 0
+        captured = capsys.readouterr()
+        data = json.loads(captured.out)
+        assert data["raw_stm"] == 4
+        assert data["profile"] == "2H"
+        assert data["tempo"] == 0.2
+        assert "stream_flow_index" in data
+        assert data["stream_flow_index"] is not None
+
+    def test_flow_direct_json_token_list_string(self, capsys):
+        tokens_json = json.dumps(["R", "U", "R'", "U'"])
+        code = main(["flow", tokens_json, "-j"])
+        assert code == 0
+        captured = capsys.readouterr()
+        data = json.loads(captured.out)
+        assert data["raw_stm"] == 4
+        assert data["regrip_count"] == 0
+
+    def test_flow_piped_stdin_raw_moves(self, monkeypatch, capsys):
+        import io
+        fake_stdin = io.StringIO("R U R' U'")
+        monkeypatch.setattr("sys.stdin", fake_stdin)
+        monkeypatch.setattr(fake_stdin, "isatty", lambda: False)
+
+        code = main(["flow", "-j", "--tempo", "0.25", "--profile", "OH"])
+        assert code == 0
+        captured = capsys.readouterr()
+        data = json.loads(captured.out)
+        assert data["raw_stm"] == 4
+        assert data["profile"] == "OH"
+        assert data["tempo"] == 0.25
+
+    def test_flow_piped_stdin_json_stream(self, monkeypatch, capsys):
+        import io
+        stream_json = json.dumps([
+            {"move": "R", "timestamp_ms": 100},
+            {"move": "U", "timestamp_ms": 250},
+        ])
+        fake_stdin = io.StringIO(stream_json)
+        monkeypatch.setattr("sys.stdin", fake_stdin)
+        monkeypatch.setattr(fake_stdin, "isatty", lambda: False)
+
+        code = main(["flow", "-j", "--tempo", "0.15"])
+        assert code == 0
+        captured = capsys.readouterr()
+        data = json.loads(captured.out)
+        assert data["raw_stm"] == 2
+        assert data["tempo"] == 0.15
+        assert data["turning_ratio"] is not None
+
+    def test_flow_flag_moves_option(self, capsys):
+        code = main(["flow", "-m", "R U R' U'", "--json"])
+        assert code == 0
+        captured = capsys.readouterr()
+        data = json.loads(captured.out)
+        assert data["raw_stm"] == 4
+
+    def test_flow_cli_source_does_not_contain_stream_pause_detector(self):
+        import inspect
+        import roux_engine.cli as cli_mod
+        source = inspect.getsource(cli_mod)
+        assert "StreamPauseDetector" not in source, "cli.py must not instantiate or import StreamPauseDetector"
+        assert "simulated_stream" not in source, "cli.py must not manually fabricate simulated timestamp streams"
+
+    def test_flow_delegates_directly_to_score(self, monkeypatch, capsys):
+        from unittest.mock import MagicMock
+        score_called = False
+
+        original_score = FlowScorer.score
+
+        def mock_score(self, moves, tempo=None, profile=None, **kwargs):
+            nonlocal score_called
+            score_called = True
+            return original_score(self, moves, tempo=tempo, profile=profile, **kwargs)
+
+        def forbidden_call(*args, **kwargs):
+            raise AssertionError("CLI must delegate directly to FlowScorer.score(), not score_moves/score_stream")
+
+        monkeypatch.setattr(FlowScorer, "score", mock_score)
+        monkeypatch.setattr(FlowScorer, "score_moves", forbidden_call)
+        monkeypatch.setattr(FlowScorer, "score_stream", forbidden_call)
+
+        code = main(["flow", "R U R' U'", "--tempo", "0.25", "--profile", "OH"])
+        assert code == 0
+        assert score_called is True
+
+    def test_flow_invalid_moves_error(self, capsys):
+        code = main(["flow", "R U INVALID_MOVE"])
+        assert code == 1
+        captured = capsys.readouterr()
+        assert "Error:" in captured.err
+
+    def test_flow_negative_tempo_error(self, capsys):
+        code = main(["flow", "R U R' U'", "--tempo", "-0.25"])
+        assert code == 1
+        captured = capsys.readouterr()
+        assert "Error:" in captured.err
+
+    def test_flow_empty_file_error(self, tmp_path, capsys):
+        empty_file = tmp_path / "empty.txt"
+        empty_file.write_text("   \n  ")
+        code = main(["flow", str(empty_file)])
+        assert code == 1
+        captured = capsys.readouterr()
+        assert "Error:" in captured.err
+
+
+
+

@@ -10,7 +10,7 @@ from typing import Optional
 from .segmenter.segmenter import RouxSegmenter
 from .segmenter.models import SegmentedSolve
 from .solver.scramble_solver import FullSolveResult
-from .ergonomics.models import FlowScore, HandProfile
+from .ergonomics.models import FlowScore
 
 
 def format_solve_report(solve: SegmentedSolve) -> str:
@@ -704,57 +704,38 @@ def handle_flow(argv: list[str]) -> int:
             except (EOFError, KeyboardInterrupt):
                 return 1
 
-    if not raw_input:
+    input_text = raw_input.strip() if raw_input else ""
+    source_name = None
+
+    if input_text:
+        p = Path(input_text)
+        try:
+            is_file = p.is_file()
+        except (OSError, ValueError):
+            is_file = False
+
+        if is_file:
+            source_name = str(p)
+            try:
+                input_text = p.read_text().strip()
+            except Exception as e:
+                print(f"Error reading file {p}: {e}", file=sys.stderr)
+                return 1
+
+    if not input_text:
         print("Error: Move sequence or file must be provided.", file=sys.stderr)
         return 1
 
-
-    input_text = raw_input.strip()
-    source_name = None
-
-    p = Path(input_text)
-    if p.is_file():
-        source_name = str(p)
-        try:
-            input_text = p.read_text().strip()
-        except Exception as e:
-            print(f"Error reading file {p}: {e}", file=sys.stderr)
-            return 1
-
-    profile = HandProfile(solving_mode=args.profile)
-    scorer = FlowScorer(profile=profile)
-
-    is_stream = False
-    stream_data = None
-    if input_text.startswith("["):
-        try:
-            parsed_json = json.loads(input_text)
-            if isinstance(parsed_json, list):
-                is_stream = True
-                stream_data = parsed_json
-        except Exception:
-            pass
-
-    if is_stream and stream_data is not None:
-        if args.tempo is not None and args.tempo > 0:
-            from .ergonomics.pause_detector import StreamPauseDetector
-            detector = StreamPauseDetector(
-                grip_tracker=scorer.grip_tracker,
-                transition_matrix=scorer.transition_matrix,
-                pause_threshold_ms=args.tempo * 1000.0,
-            )
-            score = scorer.score_stream(stream_data, pause_detector=detector)
-        else:
-            score = scorer.score_stream(stream_data)
-    elif args.tempo is not None and args.tempo > 0:
-        tokens = input_text.split()
-        simulated_stream = [
-            {"move": tok, "timestamp_ms": int(i * args.tempo * 1000)}
-            for i, tok in enumerate(tokens)
-        ]
-        score = scorer.score_stream(simulated_stream)
-    else:
-        score = scorer.score_moves(input_text)
+    scorer = FlowScorer()
+    try:
+        score = scorer.score(
+            input_text,
+            tempo=args.tempo,
+            profile=args.profile,
+        )
+    except Exception as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
 
     if args.json:
         result_dict = score.to_dict()
