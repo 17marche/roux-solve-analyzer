@@ -665,15 +665,21 @@ def get_dual_neutral_orientations() -> Sequence[RouxOrientation]:
     return _DUAL_NEUTRAL_ORIENTATIONS_LIST
 
 
+OrientationId = Union[str, RouxOrientation, CanonicalSymmetry, Tuple[Union[Color, int], Union[Color, int]], Any]
+
+
 def get_orientation(
-    identifier: Union[str, RouxOrientation, CanonicalSymmetry, Tuple[Color, Color], Any]
+    identifier: Optional[OrientationId] = "",
 ) -> RouxOrientation:
     """Resolves an orientation by instance, rotation string, CanonicalSymmetry, or (bottom_color, left_color) pair.
     
     Args:
         identifier: RouxOrientation instance, CanonicalSymmetry enum, rotation string (e.g. "", "y", "x2 y"),
-                    or (bottom_color, left_color) tuple.
+                    or (bottom_color, left_color) tuple. None or empty string resolves to canonical orientation.
     """
+    if identifier is None:
+        return CANONICAL_ORIENTATION
+
     if isinstance(identifier, RouxOrientation):
         return identifier
 
@@ -737,6 +743,90 @@ def get_orientation(
     raise ValueError(f"Unrecognized orientation identifier: {identifier!r}")
 
 
+# -----------------------------------------------------------------------------
+# Top-Level Phase Completion Predicates
+# -----------------------------------------------------------------------------
+
+def is_fb_solved(
+    cube: CubeState,
+    orientation: Optional[OrientationId] = "",
+) -> bool:
+    """Checks if First Block is solved in the specified (or default canonical) orientation."""
+    return get_orientation(orientation).is_fb_solved(cube)
+
+
+def is_sb_solved(
+    cube: CubeState,
+    orientation: Optional[OrientationId] = "",
+) -> bool:
+    """Checks if Second Block is solved in the specified (or default canonical) orientation."""
+    return get_orientation(orientation).is_sb_solved(cube)
+
+
+def is_dr_solved(
+    cube: CubeState,
+    orientation: Optional[OrientationId] = "",
+) -> bool:
+    """Checks if the DR edge is solved in the specified (or default canonical) orientation."""
+    return get_orientation(orientation).is_dr_solved(cube)
+
+
+def is_back_pair_solved(
+    cube: CubeState,
+    orientation: Optional[OrientationId] = "",
+) -> bool:
+    """Checks if the SB back pair is solved in the specified (or default canonical) orientation."""
+    return get_orientation(orientation).is_back_pair_solved(cube)
+
+
+def is_front_pair_solved(
+    cube: CubeState,
+    orientation: Optional[OrientationId] = "",
+) -> bool:
+    """Checks if the SB front pair is solved in the specified (or default canonical) orientation."""
+    return get_orientation(orientation).is_front_pair_solved(cube)
+
+
+def is_center_aligned_sb_solved(
+    cube: CubeState,
+    orientation: Optional[OrientationId] = "",
+) -> bool:
+    """Checks if Center-Aligned Second Block is solved in the specified (or default canonical) orientation."""
+    return get_orientation(orientation).is_center_aligned_sb_solved(cube)
+
+
+def is_eo_solved(
+    cube: CubeState,
+    orientation: Optional[OrientationId] = "",
+) -> bool:
+    """Checks if LSE edge orientation (EO) is solved in the specified (or default canonical) orientation."""
+    return get_orientation(orientation).is_eo_solved(cube)
+
+
+def is_ul_ur_solved(
+    cube: CubeState,
+    orientation: Optional[OrientationId] = "",
+) -> bool:
+    """Checks if UL and UR edges are solved (up to AUF) in the specified (or default canonical) orientation."""
+    return get_orientation(orientation).is_ul_ur_solved(cube)
+
+
+def count_bad_edges(
+    cube: CubeState,
+    orientation: Optional[OrientationId] = "",
+) -> int:
+    """Counts the number of misoriented LSE edges in the specified (or default canonical) orientation."""
+    return get_orientation(orientation).count_bad_edges(cube)
+
+
+def get_m_slice_center_offset(
+    cube: CubeState,
+    orientation: Optional[OrientationId] = "",
+) -> int:
+    """Determines the M-slice rotation offset (0, 1, 2, or 3) in the specified (or default canonical) orientation."""
+    return get_orientation(orientation).get_m_slice_center_offset(cube)
+
+
 __all__ = [
     "CanonicalSymmetry",
     "SBPlacement",
@@ -748,4 +838,15 @@ __all__ = [
     "translate_moves",
     "translate_moves_to_original",
     "translate_moves_to_canonical",
+    "is_fb_solved",
+    "is_sb_solved",
+    "is_dr_solved",
+    "is_back_pair_solved",
+    "is_front_pair_solved",
+    "is_center_aligned_sb_solved",
+    "is_eo_solved",
+    "is_ul_ur_solved",
+    "count_bad_edges",
+    "get_m_slice_center_offset",
 ]
+

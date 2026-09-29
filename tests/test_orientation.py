@@ -13,6 +13,16 @@ from roux_engine.core.orientation import (
     translate_moves,
     translate_moves_to_original,
     translate_moves_to_canonical,
+    is_fb_solved,
+    is_sb_solved,
+    is_dr_solved,
+    is_back_pair_solved,
+    is_front_pair_solved,
+    is_center_aligned_sb_solved,
+    is_eo_solved,
+    is_ul_ur_solved,
+    count_bad_edges,
+    get_m_slice_center_offset,
 )
 
 
@@ -388,6 +398,172 @@ class TestSBPlacementExtraction:
         for s in SolverSymmetry:
             o = get_orientation(s)
             assert o.rotations == s.value
+
+
+class TestTopLevelPhasePredicates:
+    """Seam 5: Top-Level Phase Completion Predicates."""
+
+    def test_canonical_predicates_on_solved_cube(self):
+        """All 10 predicates default to canonical Yellow-bottom/Orange-left frame and pass on solved cube."""
+        c = CubeState()
+        assert is_fb_solved(c) is True
+        assert is_sb_solved(c) is True
+        assert is_dr_solved(c) is True
+        assert is_back_pair_solved(c) is True
+        assert is_front_pair_solved(c) is True
+        assert is_center_aligned_sb_solved(c) is True
+        assert is_eo_solved(c) is True
+        assert is_ul_ur_solved(c) is True
+        assert count_bad_edges(c) == 0
+        assert get_m_slice_center_offset(c) == 0
+
+    def test_canonical_predicates_on_scrambled_cube(self):
+        """Predicates detect incomplete phases on a scrambled cube."""
+        c = CubeState().apply_moves("R U R' F' D2 L B' U2 F2 D")
+        assert is_fb_solved(c) is False
+        assert is_sb_solved(c) is False
+        assert is_dr_solved(c) is False
+        assert is_back_pair_solved(c) is False
+        assert is_front_pair_solved(c) is False
+        assert is_center_aligned_sb_solved(c) is False
+        assert is_eo_solved(c) is False
+        assert is_ul_ur_solved(c) is False
+        assert count_bad_edges(c) > 0
+
+    def test_canonical_predicates_on_targeted_disturbances(self):
+        """Targeted single-piece and sub-step disturbances are accurately detected."""
+        c = CubeState()
+
+        # FB corner disturbance
+        c_fb = c.copy()
+        c_fb.co[Corner.DLF] = 1
+        assert is_fb_solved(c_fb) is False
+        assert is_sb_solved(c_fb) is True
+
+        # DR edge flip
+        c_dr = c.copy()
+        c_dr.eo[Edge.DR] = 1
+        assert is_dr_solved(c_dr) is False
+        assert is_sb_solved(c_dr) is False
+        assert is_fb_solved(c_dr) is True
+
+        # Back pair BR edge flip
+        c_bp = c.copy()
+        c_bp.eo[Edge.BR] = 1
+        assert is_back_pair_solved(c_bp) is False
+        assert is_front_pair_solved(c_bp) is True
+        assert is_dr_solved(c_bp) is True
+        assert is_sb_solved(c_bp) is False
+
+        # Front pair DFR corner twist
+        c_fp = c.copy()
+        c_fp.co[Corner.DFR] = 2
+        assert is_front_pair_solved(c_fp) is False
+        assert is_back_pair_solved(c_fp) is True
+        assert is_dr_solved(c_fp) is True
+        assert is_sb_solved(c_fp) is False
+
+        # Center-aligned SB vs M / M2 moves
+        c_m2 = c.copy()
+        c_m2.apply_move("M2")
+        assert is_sb_solved(c_m2) is True
+        assert is_center_aligned_sb_solved(c_m2) is True
+        assert get_m_slice_center_offset(c_m2) == 2
+
+        c_m = c.copy()
+        c_m.apply_move("M")
+        assert is_sb_solved(c_m) is True
+        assert is_center_aligned_sb_solved(c_m) is False
+        assert get_m_slice_center_offset(c_m) in (1, 3)
+
+        # LSE bad edges and EO
+        c_eo = c.copy()
+        c_eo.eo[Edge.UF] = 1
+        c_eo.eo[Edge.UB] = 1
+        assert count_bad_edges(c_eo) == 2
+        assert is_eo_solved(c_eo) is False
+
+        # UL/UR swap
+        c_lr = c.copy()
+        c_lr.ep[Edge.UL], c_lr.ep[Edge.UR] = c_lr.ep[Edge.UR].copy(), c_lr.ep[Edge.UL].copy()
+        assert is_ul_ur_solved(c_lr) is False
+
+    def test_predicates_across_all_24_color_neutral_orientations(self):
+        """All 10 predicates correctly evaluate state when parametrized with any of the 24 orientations."""
+        for o in get_all_orientations():
+            c = CubeState()
+            if o.rotations:
+                c.apply_moves(o.rotations)
+
+            # Solved in orientation o
+            assert is_fb_solved(c, orientation=o.rotations) is True
+            assert is_sb_solved(c, orientation=o.rotations) is True
+            assert is_dr_solved(c, orientation=o.rotations) is True
+            assert is_back_pair_solved(c, orientation=o.rotations) is True
+            assert is_front_pair_solved(c, orientation=o.rotations) is True
+            assert is_center_aligned_sb_solved(c, orientation=o.rotations) is True
+            assert is_eo_solved(c, orientation=o.rotations) is True
+            assert is_ul_ur_solved(c, orientation=o.rotations) is True
+            assert count_bad_edges(c, orientation=o.rotations) == 0
+            assert get_m_slice_center_offset(c, orientation=o.rotations) == 0
+
+            # Passing RouxOrientation instance directly
+            assert is_fb_solved(c, orientation=o) is True
+            assert is_sb_solved(c, orientation=o) is True
+
+            # If not canonical orientation, default canonical check should reject FB/SB
+            if o.rotations != "":
+                assert is_fb_solved(c) is False
+
+    def test_predicates_orientation_argument_types(self):
+        """Predicates accept rotation strings, RouxOrientation, CanonicalSymmetry, color tuples, and None."""
+        c_y = CubeState().apply_moves("y")
+        ori_y = get_orientation("y")
+
+        # By rotation string
+        assert is_fb_solved(c_y, orientation="y") is True
+        # By RouxOrientation instance
+        assert is_fb_solved(c_y, orientation=ori_y) is True
+        assert is_sb_solved(c_y, orientation=ori_y) is True
+        assert is_dr_solved(c_y, orientation=ori_y) is True
+        assert is_back_pair_solved(c_y, orientation=ori_y) is True
+        assert is_front_pair_solved(c_y, orientation=ori_y) is True
+        assert is_center_aligned_sb_solved(c_y, orientation=ori_y) is True
+        assert is_eo_solved(c_y, orientation=ori_y) is True
+        assert is_ul_ur_solved(c_y, orientation=ori_y) is True
+        assert count_bad_edges(c_y, orientation=ori_y) == 0
+        assert get_m_slice_center_offset(c_y, orientation=ori_y) == 0
+
+        # By CanonicalSymmetry enum
+        assert is_fb_solved(c_y, orientation=CanonicalSymmetry.Y) is True
+        assert is_sb_solved(c_y, orientation=CanonicalSymmetry.Y) is True
+        assert is_dr_solved(c_y, orientation=CanonicalSymmetry.Y) is True
+        assert is_eo_solved(c_y, orientation=CanonicalSymmetry.Y) is True
+        assert count_bad_edges(c_y, orientation=CanonicalSymmetry.Y) == 0
+
+        # By color tuple (bottom=Yellow, left=Green)
+        assert is_fb_solved(c_y, orientation=(Color.YELLOW, Color.GREEN)) is True
+        assert is_sb_solved(c_y, orientation=(Color.YELLOW, Color.GREEN)) is True
+
+        # Test orientation=None resolves to canonical orientation across all 10 predicates
+        c_solved = CubeState()
+        assert is_fb_solved(c_solved, orientation=None) is True
+        assert is_sb_solved(c_solved, orientation=None) is True
+        assert is_dr_solved(c_solved, orientation=None) is True
+        assert is_back_pair_solved(c_solved, orientation=None) is True
+        assert is_front_pair_solved(c_solved, orientation=None) is True
+        assert is_center_aligned_sb_solved(c_solved, orientation=None) is True
+        assert is_eo_solved(c_solved, orientation=None) is True
+        assert is_ul_ur_solved(c_solved, orientation=None) is True
+        assert count_bad_edges(c_solved, orientation=None) == 0
+        assert get_m_slice_center_offset(c_solved, orientation=None) == 0
+
+    def test_invalid_orientation_raises(self):
+        """Passing an unrecognized orientation identifier raises ValueError."""
+        c = CubeState()
+        with pytest.raises(ValueError):
+            is_fb_solved(c, orientation="invalid_orient")
+
 
 
 

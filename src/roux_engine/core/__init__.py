@@ -14,6 +14,16 @@ from .orientation import (
     translate_moves,
     translate_moves_to_original,
     translate_moves_to_canonical,
+    is_fb_solved,
+    is_sb_solved,
+    is_dr_solved,
+    is_back_pair_solved,
+    is_front_pair_solved,
+    is_center_aligned_sb_solved,
+    is_eo_solved,
+    is_ul_ur_solved,
+    count_bad_edges,
+    get_m_slice_center_offset,
 )
 
 __all__ = [
@@ -38,4 +48,14 @@ __all__ = [
     "translate_moves",
     "translate_moves_to_original",
     "translate_moves_to_canonical",
+    "is_fb_solved",
+    "is_sb_solved",
+    "is_dr_solved",
+    "is_back_pair_solved",
+    "is_front_pair_solved",
+    "is_center_aligned_sb_solved",
+    "is_eo_solved",
+    "is_ul_ur_solved",
+    "count_bad_edges",
+    "get_m_slice_center_offset",
 ]
