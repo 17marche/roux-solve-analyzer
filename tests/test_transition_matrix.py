@@ -248,6 +248,83 @@ class TestTransitionMatrixProperties:
         assert len(loaded) == len(matrix)
 
 
+class TestCalibrated2HMatrixInvariants:
+    """Verification suite for the calibrated 2H bigram transition matrix (TRANSITION_MATRIX_CALIBRATION_SPEC.md)."""
+
+    def test_calibrated_matrix_has_no_synthetic_3_defaults(self):
+        matrix = TransitionMatrix.load_2h()
+        # In the calibrated matrix, all unmeasured ~3.0 defaults (>= 2.88) must be eliminated.
+        defaults = [k for k, v in matrix.transitions.items() if v >= 2.88]
+        assert len(defaults) == 0, f"Found synthetic defaults: {defaults[:10]}"
+
+    def test_double_move_monotonicity_invariant(self):
+        matrix = TransitionMatrix.load_2h()
+        # Rule 3: For all X2, effort(A, X2) >= min(effort(A, X), effort(A, X')) * 1.15
+        faces = ["U", "D", "F", "B", "L", "R", "M", "r"]
+        all_moves = [f for face in faces for f in [face, f"{face}'", f"{face}2"]]
+
+        for face in faces:
+            # Single move monotonicity
+            effort_x = matrix.get_effort(None, face)
+            effort_xp = matrix.get_effort(None, f"{face}'")
+            effort_x2 = matrix.get_effort(None, f"{face}2")
+            min_single = min(effort_x, effort_xp)
+            assert effort_x2 >= min_single * 1.15 - 0.005, (
+                f"Single move monotonicity paradox for {face}2: {effort_x2} < {min_single} * 1.15"
+            )
+
+            # Pair monotonicity: for all preceding moves A
+            for a in all_moves:
+                if a.startswith(face):
+                    continue  # Same face does not appear in bigrams
+                pair_x = f"{a}{face}"
+                pair_xp = f"{a}{face}'"
+                pair_x2 = f"{a}{face}2"
+                if pair_x in matrix and pair_xp in matrix and pair_x2 in matrix:
+                    min_flick = min(matrix[pair_x], matrix[pair_xp])
+                    assert matrix[pair_x2] >= min_flick * 1.15 - 0.005, (
+                        f"Pair monotonicity paradox for {pair_x2}: {matrix[pair_x2]} < {min_flick} * 1.15"
+                    )
+
+    def test_wide_turn_ratio_invariant(self):
+        matrix = TransitionMatrix.load_2h()
+        # Rule 1: Wide r inherits from outer R with ~1.12x drag factor
+        # Check single moves
+        for r_move, r_base in [("r", "R"), ("r'", "R'"), ("r2", "R2")]:
+            ratio = matrix.get_effort(None, r_move) / matrix.get_effort(None, r_base)
+            assert 1.05 <= ratio <= 1.20, f"Single wide ratio for {r_move}/{r_base} was {ratio:.3f}"
+
+        # Check key bigrams from spec
+        assert 0.50 <= matrix["rU"] <= 0.65
+        assert 0.50 <= matrix["r'U"] <= 0.65
+
+    def test_bilateral_mirror_invariant(self):
+        matrix = TransitionMatrix.load_2h()
+        # Rule 2: Left-hand turns mirror clean right-hand pairs with 1.15x drag factor
+        assert abs(matrix.get_effort(None, "L'") - matrix.get_effort(None, "R") * 1.15) < 0.05
+        assert abs(matrix.get_effort(None, "L2") - matrix.get_effort(None, "R2") * 1.15) < 0.05
+        # Key pairs
+        assert 0.50 <= matrix["U'L"] <= 0.65
+        assert 0.50 <= matrix["L'U'"] <= 0.65
+
+    def test_m_slice_recalibration_invariant(self):
+        matrix = TransitionMatrix.load_2h()
+        # Rule 4: Single M is calibrated to 1.45 (not 2.994)
+        assert abs(matrix.get_effort(None, "M") - 1.45) < 0.05
+        # Decoupled two-handed pairs sit between 0.70 and 1.85
+        assert 1.10 <= matrix["MU"] <= 1.70
+        assert 1.10 <= matrix["MU'"] <= 1.70
+
+    def test_fallback_interpolation_rule_6(self):
+        matrix = TransitionMatrix.load_2h()
+        # Fallback for arbitrary unobserved wide turn should strip wide notation and apply drag
+        effort_r = matrix._interpolate_fallback("r", "B")
+        effort_R = matrix._interpolate_fallback("R", "B")
+        # Should be scaled by roughly 1.12
+        assert effort_r > effort_R
+        assert 1.05 <= (effort_r / effort_R) <= 1.20
+
+
 
 
 

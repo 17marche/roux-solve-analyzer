@@ -150,30 +150,67 @@ class TransitionMatrix:
         return len(self.transitions)
 
     def _interpolate_fallback(self, prev_move: str, curr_move: str) -> float:
-        """Interpolates effort for unobserved bigrams using single-move marginals."""
+        """Interpolates effort for unobserved bigrams using biomechanical rules (Rule 6).
+
+        1. Strip wide notation (r -> R, l -> L).
+        2. Query the underlying outer-layer transition.
+        3. Apply the appropriate drag factor (1.12x for r, 1.15x for L/l).
+        4. Apply anatomical awkwardness modifiers if needed.
+        """
         is_prev_valid = MoveParser.is_valid_move_token(prev_move)
         is_curr_valid = MoveParser.is_valid_move_token(curr_move)
 
         if not is_prev_valid and not is_curr_valid:
             return 1.0
 
-        single_prev = self.transitions.get(prev_move, 1.0)
-        single_curr = self.transitions.get(curr_move, 1.0)
+        def _strip_and_drag(token: str) -> Tuple[str, float]:
+            if not token:
+                return token, 1.0
+            face = token[0]
+            if face == "r":
+                return "R" + token[1:], 1.12
+            if face == "l":
+                return "L" + token[1:], 1.15
+            if face == "L":
+                return token, 1.15
+            return token, 1.0
+
+        outer_prev, drag_prev = _strip_and_drag(prev_move) if is_prev_valid else (prev_move, 1.0)
+        outer_curr, drag_curr = _strip_and_drag(curr_move) if is_curr_valid else (curr_move, 1.0)
+        drag_multiplier = drag_prev * drag_curr
+
+        # Check if underlying outer transition is directly in transitions
+        outer_key = f"{outer_prev}{outer_curr}"
+        if outer_key in self.transitions:
+            return round(self.transitions[outer_key] * drag_multiplier, 4)
 
         # Baseline average of marginal efforts
+        if (outer_prev, outer_curr) != (prev_move, curr_move):
+            single_prev = self.transitions.get(outer_prev, self.transitions.get(prev_move, 1.0))
+            single_curr = self.transitions.get(outer_curr, self.transitions.get(curr_move, 1.0))
+        else:
+            single_prev = self.transitions.get(prev_move, 1.0)
+            single_curr = self.transitions.get(curr_move, 1.0)
+
         avg_effort = (single_prev + single_curr) / 2.0
 
         # Awkwardness modifier if consecutive turns involve awkward face combinations
         if is_prev_valid and is_curr_valid:
-            face_prev = prev_move[0].upper()
-            face_curr = curr_move[0].upper()
-            if face_prev in "FB" or face_curr in "FB":
-                avg_effort *= 1.2
+            face_prev = outer_prev[0].upper()
+            face_curr = outer_curr[0].upper()
+            is_oh = (self.profile.solving_mode == "OH")
+            if not is_oh and ((face_prev in "LR" and face_curr in "LR") or (face_prev in "UD" and face_curr in "UD")):
+                avg_effort *= 0.95
+            elif face_prev in "FB" and face_curr in "FB":
+                avg_effort *= 1.30
+            elif (face_prev == "R" and face_curr in "FB") or (face_prev in "FB" and face_curr == "R"):
+                avg_effort *= 1.35
+            elif face_prev in "FB" or face_curr in "FB":
+                avg_effort *= 1.20
             elif face_prev == face_curr:
-                # Same face consecutive turns without cancellation (e.g. U then U')
-                avg_effort *= 1.1
+                avg_effort *= 1.10
 
-        return round(avg_effort, 4)
+        return round(avg_effort * drag_multiplier, 4)
 
     def save(self, path: Union[str, Path]) -> None:
         """Saves matrix to JSON file."""
