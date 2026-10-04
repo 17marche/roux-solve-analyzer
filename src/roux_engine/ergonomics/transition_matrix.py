@@ -29,9 +29,45 @@ class TransitionMatrix:
         profile: Optional[HandProfile] = None,
         metadata: Optional[Dict[str, Any]] = None,
     ) -> None:
-        self.transitions = dict(transitions)
         self.profile = profile or HandProfile()
+        self.transitions = dict(transitions)
         self.metadata = dict(metadata or {})
+        if self.profile.m_slice_hand.lower() == "left":
+            self._apply_left_m_slice_adaptation()
+
+    def _apply_left_m_slice_adaptation(self) -> None:
+        """Adapts M/U transition efforts for solvers who execute M slices with the left hand.
+
+        In 2H Roux, when the left hand operates M, the right hand operates U.
+        This inverts which U direction is a fluid index pull vs awkward fingernail push:
+        - Right hand U is index pull (fluid)
+        - Right hand U' is index push (awkward)
+
+        Therefore, for all bigrams coupling M and U (M* -> U* and U* -> M*),
+        the U and U' counterparts swap values:
+        - M* -> U*: M'U <-> M'U', M2U <-> M2U', MU <-> MU'
+        - U* -> M*: UM' <-> U'M', UM2 <-> U'M2, UM <-> U'M
+        Double turns (U2) and all non-M transitions (RU, R'U', LU, etc.) remain unchanged.
+        """
+        m_moves = ("M", "M'", "M2")
+        # 1. M* -> U* pairs (e.g. M'U <-> M'U')
+        for m in m_moves:
+            u_key = f"{m}U"
+            up_key = f"{m}U'"
+            if u_key in self.transitions and up_key in self.transitions:
+                self.transitions[u_key], self.transitions[up_key] = (
+                    self.transitions[up_key],
+                    self.transitions[u_key],
+                )
+        # 2. U* -> M* pairs (e.g. UM' <-> U'M')
+        for m in m_moves:
+            u_key = f"U{m}"
+            up_key = f"U'{m}"
+            if u_key in self.transitions and up_key in self.transitions:
+                self.transitions[u_key], self.transitions[up_key] = (
+                    self.transitions[up_key],
+                    self.transitions[u_key],
+                )
 
     @classmethod
     def _get_default_data_path(cls, solving_mode: str) -> Path:

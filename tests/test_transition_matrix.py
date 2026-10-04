@@ -340,6 +340,43 @@ class TestCalibrated2HMatrixInvariants:
         assert effort_r > effort_R
         assert 1.05 <= (effort_r / effort_R) <= 1.20
 
+    def test_left_m_slice_adaptation(self):
+        matrix_right = TransitionMatrix.load(profile=HandProfile(m_slice_hand="right"))
+        matrix_left = TransitionMatrix.load(profile=HandProfile(m_slice_hand="left"))
+
+        # M* -> U* pairs must invert U <-> U'
+        assert matrix_left["M'U"] == matrix_right["M'U'"] == 0.831
+        assert matrix_left["M'U'"] == matrix_right["M'U"] == 1.063
+        assert matrix_left["M2U"] == matrix_right["M2U'"] == 0.820
+        assert matrix_left["M2U'"] == matrix_right["M2U"] == 0.884
+        assert matrix_left["MU"] == matrix_right["MU'"] == 0.980
+        assert matrix_left["MU'"] == matrix_right["MU"] == 1.220
+
+        # U* -> M* pairs must invert U <-> U'
+        assert matrix_left["UM'"] == matrix_right["U'M'"] == 0.780
+        assert matrix_left["U'M'"] == matrix_right["UM'"] == 1.020
+        assert matrix_left["UM"] == matrix_right["U'M"] == 0.980
+        assert matrix_left["U'M"] == matrix_right["UM"] == 1.250
+        assert matrix_left["UM2"] == matrix_right["U'M2"] == 0.900
+        assert matrix_left["U'M2"] == matrix_right["UM2"] == 1.180
+
+        # Invariance: U2 pairs must be identical
+        assert matrix_left["M'U2"] == matrix_right["M'U2"]
+        assert matrix_left["M2U2"] == matrix_right["M2U2"]
+        assert matrix_left["MU2"] == matrix_right["MU2"]
+        assert matrix_left["U2M'"] == matrix_right["U2M'"]
+        assert matrix_left["U2M"] == matrix_right["U2M"]
+        assert matrix_left["U2M2"] == matrix_right["U2M2"]
+
+        # Invariance: non-M outer layer pairs must be completely identical
+        assert matrix_left["RU"] == matrix_right["RU"]
+        assert matrix_left["RU'"] == matrix_right["RU'"]
+        assert matrix_left["R'U"] == matrix_right["R'U"]
+        assert matrix_left["R'U'"] == matrix_right["R'U'"]
+        assert matrix_left["LU"] == matrix_right["LU"]
+        assert matrix_left["L'U'"] == matrix_right["L'U'"]
+        assert matrix_left["FU"] == matrix_right["FU"]
+
 
 
 

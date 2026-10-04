@@ -269,6 +269,13 @@ During 2H Roux Last Six Edges (LSE), the solver's hands are decoupled: the right
 | **`U2M`** | **`1.150`** | Right upward push after left double flick. |
 | **`U2M2`** | **`0.980`** | Empirical double-flick transition retained. |
 
+#### Left-Handed $M$-Slice Adaptation (`m_slice_hand = "left"`):
+When a solver operates the $M$ slice with the left hand, the right hand operates the $U$ layer. This inverts which $U$ direction is a fluid pull vs awkward fingernail push:
+* $U$ becomes the right-index pull (pad) $\implies$ fluid trigger.
+* $U'$ becomes the right-index push (nail) $\implies$ awkward trigger.
+
+The engine adapts dynamically by swapping $U \longleftrightarrow U'$ across all 6 coupled $M \leftrightarrow U$ bigrams ($M^* U \longleftrightarrow M^* U'$ and $U M^* \longleftrightarrow U' M^*$), while preserving $U2$ double turns and all non-$M$ transitions (`RU`, `R'U'`, `FU`, etc.).
+
 
 ---
 

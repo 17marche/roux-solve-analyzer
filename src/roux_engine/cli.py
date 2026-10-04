@@ -5,12 +5,12 @@ import argparse
 import json
 from pathlib import Path
 import sys
-from typing import Optional
+from typing import Optional, Union
 
 from .segmenter.segmenter import RouxSegmenter
 from .segmenter.models import SegmentedSolve
 from .solver.scramble_solver import FullSolveResult
-from .ergonomics.models import FlowScore
+from .ergonomics.models import FlowScore, HandProfile
 
 
 def format_solve_report(solve: SegmentedSolve) -> str:
@@ -588,7 +588,7 @@ def handle_analyze(argv: list[str]) -> int:
 
 def format_flow_report(
     score: FlowScore,
-    profile: str = "2H",
+    profile: Union[str, HandProfile] = "2H",
     tempo: Optional[float] = None,
     source_name: Optional[str] = None,
 ) -> str:
@@ -599,7 +599,10 @@ def format_flow_report(
     lines.append("=" * 80)
     if source_name:
         lines.append(f"  Source:     {source_name}")
-    lines.append(f"  Profile:    {profile} (solving mode)")
+    prof_mode = profile.solving_mode if isinstance(profile, HandProfile) else str(profile)
+    lines.append(f"  Profile:    {prof_mode} (solving mode)")
+    if isinstance(profile, HandProfile) and profile.m_slice_hand == "left":
+        lines.append("  M-Slice:    left hand")
     if tempo is not None:
         tps_str = f" [{1.0 / tempo:.2f} TPS]" if tempo > 0 else ""
         lines.append(f"  Tempo:      {tempo:.2f} sec/move{tps_str}")
@@ -675,6 +678,13 @@ def handle_flow(argv: list[str]) -> int:
         help="Solving style profile: '2H' (Two-Handed) or 'OH' (One-Handed) (default: 2H)",
     )
     parser.add_argument(
+        "--m-slice-hand",
+        type=str,
+        choices=["right", "left"],
+        default="right",
+        help="Hand used for M-slice turns in 2H mode: 'right' (default) or 'left'",
+    )
+    parser.add_argument(
         "--tempo",
         type=float,
         default=None,
@@ -726,12 +736,13 @@ def handle_flow(argv: list[str]) -> int:
         print("Error: Move sequence or file must be provided.", file=sys.stderr)
         return 1
 
-    scorer = FlowScorer()
+    hand_profile = HandProfile(solving_mode=args.profile, m_slice_hand=args.m_slice_hand)
+    scorer = FlowScorer(profile=hand_profile)
     try:
         score = scorer.score(
             input_text,
             tempo=args.tempo,
-            profile=args.profile,
+            profile=hand_profile,
         )
     except Exception as e:
         print(f"Error: {e}", file=sys.stderr)
@@ -740,13 +751,14 @@ def handle_flow(argv: list[str]) -> int:
     if args.json:
         result_dict = score.to_dict()
         result_dict["profile"] = args.profile
+        result_dict["m_slice_hand"] = args.m_slice_hand
         if args.tempo is not None:
             result_dict["tempo"] = args.tempo
         print(json.dumps(result_dict, indent=2))
     else:
         report = format_flow_report(
             score,
-            profile=args.profile,
+            profile=hand_profile,
             tempo=args.tempo,
             source_name=source_name,
         )

@@ -48,8 +48,16 @@ class FlowScorer:
             transition_matrix=self.transition_matrix,
         )
         self._matrix_cache: Dict[str, TransitionMatrix] = {
-            self.profile.solving_mode.upper(): self.transition_matrix
+            self._matrix_cache_key(self.profile): self.transition_matrix
         }
+
+    @staticmethod
+    def _matrix_cache_key(profile: HandProfile) -> str:
+        """Derives a cache key incorporating both solving mode and M-slice handedness."""
+        mode = profile.solving_mode.upper()
+        if profile.m_slice_hand.lower() == "right":
+            return mode
+        return f"{mode}:{profile.m_slice_hand.lower()}"
 
     @property
     def _transitions(self) -> Dict[str, float]:
@@ -66,17 +74,17 @@ class FlowScorer:
                 raise ValueError(f"Unsupported profile: '{profile}'. Expected '2H' or 'OH'.")
             target_profile = HandProfile(solving_mode=mode)
         elif isinstance(profile, HandProfile):
-            mode = profile.solving_mode.upper()
             target_profile = profile
         else:
             raise ValueError(f"Invalid profile type: {type(profile)}")
 
-        if mode == self.profile.solving_mode.upper() and self.transition_matrix is not None:
+        if target_profile == self.profile and self.transition_matrix is not None:
             return self.transition_matrix
 
-        if mode not in self._matrix_cache:
-            self._matrix_cache[mode] = TransitionMatrix.load(profile=target_profile)
-        return self._matrix_cache[mode]
+        key = self._matrix_cache_key(target_profile)
+        if key not in self._matrix_cache:
+            self._matrix_cache[key] = TransitionMatrix.load(profile=target_profile)
+        return self._matrix_cache[key]
 
     def get_transition_effort(
         self,

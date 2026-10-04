@@ -1,7 +1,7 @@
 """Tests for FlowScorer, Effective STM (E-STM), and Kinematic Flow Efficiency."""
 
 import pytest
-from roux_engine.ergonomics.models import GripState, FlowScore
+from roux_engine.ergonomics.models import GripState, FlowScore, HandProfile
 from roux_engine.ergonomics.flow_scorer import FlowScorer
 
 
@@ -379,6 +379,36 @@ class TestFlowScorerUnifiedInterface:
         assert s_stream.e_stm == s_stream_direct.e_stm
         assert s_stream.turning_ratio == s_stream_direct.turning_ratio
         assert s_stream.stream_flow_index == s_stream_direct.stream_flow_index
+
+    def test_flow_scorer_m_slice_hand_adaptation(self):
+        profile_right = HandProfile(solving_mode="2H", m_slice_hand="right")
+        profile_left = HandProfile(solving_mode="2H", m_slice_hand="left")
+
+        scorer = FlowScorer(profile=profile_right)
+
+        # In 2H right-handed LSE, U' is index pull (fluid), U is fingernail push (awkward).
+        seq_pull_right = "M' U' M' U'"
+        seq_push_right = "M' U M' U"
+
+        score_pull_right = scorer.score(seq_pull_right, profile=profile_right)
+        score_push_right = scorer.score(seq_push_right, profile=profile_right)
+        assert score_pull_right.e_stm < score_push_right.e_stm
+
+        # For left-hand M flickers, the roles of U and U' are inverted:
+        # seq_push_right (M' U) is now fluid index pull with right hand!
+        score_u_left = scorer.score(seq_push_right, profile=profile_left)
+        # seq_pull_right (M' U') is now awkward fingernail push with right hand!
+        score_up_left = scorer.score(seq_pull_right, profile=profile_left)
+        assert score_u_left.e_stm < score_up_left.e_stm
+
+        # The inverted scores match across profiles
+        assert abs(score_u_left.e_stm - score_pull_right.e_stm) < 1e-4
+        assert abs(score_up_left.e_stm - score_push_right.e_stm) < 1e-4
+
+        # Non-M sequences are completely identical between profiles
+        score_sb_right = scorer.score("R U R' U'", profile=profile_right)
+        score_sb_left = scorer.score("R U R' U'", profile=profile_left)
+        assert score_sb_right.e_stm == score_sb_left.e_stm
 
 
 
