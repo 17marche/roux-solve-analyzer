@@ -184,11 +184,28 @@ def calibrate() -> Dict[str, float]:
     # -------------------------------------------------------------------------
     # PASS 4: Rules 4, 5 & 6 - M-Slice, Decoupled Opposing Faces & Fallbacks
     # -------------------------------------------------------------------------
-    # Rule 4: M-slice decoupled pairs with U
-    calibrated["MU"] = 1.45
-    calibrated["UM"] = 1.55
-    calibrated["MU'"] = 1.331
-    calibrated["U'M"] = 0.805
+    # Rule 4: Decoupled M-slice and U transitions (LSE fingertrick calibration)
+    # M* -> U* (Right hand finishes M -> Left hand executes U):
+    calibrated["M'U'"] = 0.831  # Left index pull (empirical baseline)
+    calibrated["M'U"] = 1.063   # Left index fingernail push (empirical baseline)
+    calibrated["M'U2"] = 0.956  # Left double flick (monotonicity: 0.831 * 1.15)
+    calibrated["M2U'"] = 0.820  # Left index pull (faster than push, fixes H-perm bias)
+    calibrated["M2U"] = 0.884   # Left index push (drilled LSE baseline)
+    calibrated["M2U2"] = 0.980  # Left double flick (monotonicity: >= 0.820 * 1.15)
+    calibrated["MU'"] = 0.980   # Left index pull after upward push (~1.25x over M'U')
+    calibrated["MU"] = 1.220    # Left fingernail push after upward push (~1.25x over MU')
+    calibrated["MU2"] = 1.150   # Left double flick after upward push (monotonicity: >= 0.980 * 1.15)
+
+    # U* -> M* (Left hand finishes U -> Right hand executes M):
+    calibrated["U'M'"] = 0.780  # Right ring flick after left pull (fixes AUF recognition pause 1.401)
+    calibrated["U'M"] = 0.980   # Right upward push after left pull (~1.25x penalty over U'M')
+    calibrated["U'M2"] = 0.900  # Right double flick (monotonicity: >= 0.780 * 1.15)
+    calibrated["UM'"] = 1.020   # Right ring flick after left fingernail push (~1.25x over U'M')
+    calibrated["UM"] = 1.250    # Right upward push after left fingernail push (~1.25x over UM')
+    calibrated["UM2"] = 1.180   # Right double flick after left fingernail push (>= 1.020 * 1.15)
+    calibrated["U2M'"] = 0.850  # Right ring flick after left double flick (fixes 49ms sensor clamp 0.495)
+    calibrated["U2M"] = 1.150   # Right upward push after left double flick
+    calibrated["U2M2"] = 0.980  # Right double flick after left double flick
 
     # Rule 5: Decoupled Opposing Faces (D <-> U)
     calibrated["D'U"] = 0.751

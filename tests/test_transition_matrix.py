@@ -311,9 +311,25 @@ class TestCalibrated2HMatrixInvariants:
         matrix = TransitionMatrix.load_2h()
         # Rule 4: Single M is calibrated to 1.45 (not 2.994)
         assert abs(matrix.get_effort(None, "M") - 1.45) < 0.05
-        # Decoupled two-handed pairs sit between 0.70 and 1.85
-        assert 1.10 <= matrix["MU"] <= 1.70
-        assert 1.10 <= matrix["MU'"] <= 1.70
+        # Decoupled two-handed M/U pairs sit between 0.75 and 1.30
+        assert 1.15 <= matrix["MU"] <= 1.30
+        assert 0.90 <= matrix["MU'"] <= 1.05
+
+        # Biomechanical invariants for 2H LSE (left hand U, right hand M):
+        # Index pull (U') is faster than fingernail push (U)
+        assert matrix["U'M'"] < matrix["U'M"]
+        assert matrix["U'M'"] < matrix["UM'"]
+        assert matrix["M2U'"] < matrix["M2U"]
+        assert matrix["MU'"] < matrix["MU"]
+        assert matrix["M'U'"] < matrix["M'U"]
+
+        # Corrections for empirical raw artifacts:
+        # AUF recognition pause corrected: U'M' is fast primary trigger
+        assert 0.75 <= matrix["U'M'"] <= 0.82
+        # Sensor clamp floor corrected: U2M' >= 0.80
+        assert matrix["U2M'"] >= 0.80
+        # H-perm algorithm drill bias corrected: M2U' < M2U
+        assert matrix["M2U'"] == 0.820
 
     def test_fallback_interpolation_rule_6(self):
         matrix = TransitionMatrix.load_2h()

@@ -229,16 +229,46 @@ $$\text{effort}(A, X2) = \max\Big(\text{effort}(A, X2),\ \min\big(\text{effort}(
 
 ---
 
-### 5.5 Rule 4: $M$-Slice Calibration
-$M$-slice operations are calibrated smoothly based on finger mechanics:
-1. **$M'$ (downward ring-finger flick from DB):**
-   * Baseline: **`0.85`** (single $M' = 0.498$ retained; fluid transitions sit between `0.50` and `0.85`).
-2. **$M2$ (ring $\to$ middle double-flick from DB):**
-   * Baseline: **`0.95 – 1.15`** (single $M2 = 0.826$ retained).
-3. **$M$ (upward push from DF or index push from UB):**
-   * Single $M$ = **`1.45`** (replaces synthetic `2.994`).
-   * Decoupled two-handed pairs ($M\ U$, $U\ M$, $M\ U'$, $U'\ M$) sit at **`1.30 – 1.55`** (roughly $1.4\times$ to $1.6\times$ of $M'$, with zero finger contention).
-   * **Prohibition:** No two-handed $M$ transition may exceed $2.0$ unless it involves an explicit same-finger collision on the same hand.
+### 5.5 Rule 4: $M$-Slice & $U$-Layer Calibration (2H LSE Biomechanics)
+
+During 2H Roux Last Six Edges (LSE), the solver's hands are decoupled: the right hand operates the $M$ slice while the left hand operates the $U$ layer (assuming standard right-handed slice flicking).
+
+#### Fingertrick Biomechanics:
+* **Left Hand ($U$ Layer):**
+  * $U'$: Left index pull with the finger pad $\implies$ fast, ergonomic baseline ($1.00\times$).
+  * $U$: Left index push using the fingernail / back of the finger $\implies$ biomechanically awkward and slower ($\approx 1.25\times$ penalty).
+  * $U2$: Left double flick $\implies$ strictly $\ge 1.15\times$ single flick effort.
+* **Right Hand ($M$ Slice):**
+  * $M'$: Downward ring flick from DB $\implies$ primary fluid slice baseline ($1.00\times$). Single $M' = 0.498$ is retained.
+  * $M$: Upward push from DF $\implies$ slower than downward flick ($\approx 1.25\times$). Single $M = 1.45$ (replaces synthetic $2.994$).
+  * $M2$: Ring $\to$ middle double flick from DB $\implies \ge 1.15\times$ single $M'$. Single $M2 = 0.826$ is retained.
+
+#### Calibrated $M^* \to U^*$ Transitions:
+| Bigram | Calibrated Effort | Biomechanical Rationale |
+| :--- | :--- | :--- |
+| **`M'U'`** | **`0.831`** | Empirical index pull baseline. |
+| **`M'U`** | **`1.063`** | Empirical fingernail push baseline. |
+| **`M'U2`** | **`0.956`** | Double-flick monotonicity ($0.831 \times 1.15$). |
+| **`M2U'`** | **`0.820`** | Index pull; faster than push, corrects H-perm drill bias. |
+| **`M2U`** | **`0.884`** | Empirical fingernail push from drilled LSE. |
+| **`M2U2`** | **`0.980`** | Double-flick monotonicity ($\ge 0.820 \times 1.15$). |
+| **`MU'`** | **`0.980`** | Index pull after upward push ($\approx 1.25 \times 0.831$). |
+| **`MU`** | **`1.220`** | Fingernail push after upward push ($\approx 1.25 \times 0.980$). |
+| **`MU2`** | **`1.150`** | Double-flick monotonicity ($\ge 0.980 \times 1.15$). |
+
+#### Calibrated $U^* \to M^*$ Transitions:
+| Bigram | Calibrated Effort | Biomechanical Rationale |
+| :--- | :--- | :--- |
+| **`U'M'`** | **`0.780`** | Primary fluid trigger; corrects AUF recognition pause (`1.401` in raw). |
+| **`U'M`** | **`0.980`** | Upward push after index pull ($\approx 1.25 \times 0.780$). |
+| **`U'M2`** | **`0.900`** | Double-flick monotonicity ($\ge 0.780 \times 1.15$). |
+| **`UM'`** | **`1.020`** | Right ring flick after awkward fingernail push ($\approx 1.25 \times 0.780$). |
+| **`UM`** | **`1.250`** | Right upward push after awkward fingernail push ($\approx 1.25 \times 0.980$). |
+| **`UM2`** | **`1.180`** | Right double flick after awkward fingernail push ($\ge 1.020 \times 1.15$). |
+| **`U2M'`** | **`0.850`** | Right ring flick after left double flick; corrects 49ms sensor clamp floor (`0.495` in raw). |
+| **`U2M`** | **`1.150`** | Right upward push after left double flick. |
+| **`U2M2`** | **`0.980`** | Empirical double-flick transition retained. |
+
 
 ---
 
