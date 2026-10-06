@@ -291,7 +291,7 @@ For unmeasured defaults between opposing decoupled faces ($D \to U$):
 ### 5.7 Rule 6: Biomechanical Fallback Interpolation in Code
 In [`src/roux_engine/ergonomics/transition_matrix.py`](../src/roux_engine/ergonomics/transition_matrix.py#L152):
 When an arbitrary or novel bigram is queried that is not explicitly present in the matrix, `_interpolate_fallback(prev_move, curr_move)` must:
-1. Strip wide notation ($r \to R$, $l \to L$).
+1. Strip wide notation ($r \to R$, $l \to L$, $u \to U$, etc.).
 2. Query the underlying outer-layer transition.
-3. Apply the appropriate drag factor ($1.12\times$ for $r$, $1.15\times$ for $L/l$).
+3. Apply the 1.12x rotational drag factor for wide turns.
 4. Never fall back to an uncalibrated default penalty.

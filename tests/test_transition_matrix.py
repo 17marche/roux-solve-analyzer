@@ -377,14 +377,9 @@ class TestCalibrated2HMatrixInvariants:
         assert matrix_left["L'U'"] == matrix_right["L'U'"]
         assert matrix_left["FU"] == matrix_right["FU"]
 
-    def test_left_m_slice_adaptation_does_not_affect_oh(self):
-        matrix_oh_right = TransitionMatrix.load(profile=HandProfile(solving_mode="OH", m_slice_hand="right"))
-        matrix_oh_left = TransitionMatrix.load(profile=HandProfile(solving_mode="OH", m_slice_hand="left"))
-        assert matrix_oh_left.transitions == matrix_oh_right.transitions
-
-    def test_fallback_interpolation_wide_turns_and_l(self):
+    def test_fallback_interpolation_wide_turns(self):
         matrix = TransitionMatrix.load_2h()
-        # Wide l inherits from outer L with 1.12x wide drag factor (not 1.15x)
+        # Wide l inherits from outer L with 1.12x wide drag factor
         effort_l_u = matrix.get_effort("l", "U")
         effort_L_u = matrix.get_effort("L", "U")
         assert abs(effort_l_u - round(effort_L_u * 1.12, 4)) < 1e-4
@@ -398,6 +393,19 @@ class TestCalibrated2HMatrixInvariants:
         effort_l_r = matrix.get_effort("l", "r")
         effort_L_R = matrix.get_effort("L", "R")
         assert abs(effort_l_r - round(effort_L_R * 1.12 * 1.12, 4)) < 1e-4
+
+        # Cube rotations do not inherit wide drag and maintain zero effort
+        assert matrix.get_effort("x", "U") == matrix.get_effort(None, "U")
+        assert matrix.get_effort("R", "y") == 0.0
+
+
+class TestCalibratedOHMatrixInvariants:
+    """Verification suite for One-Handed calibrated transition matrix invariants."""
+
+    def test_left_m_slice_adaptation_does_not_affect_oh(self):
+        matrix_oh_right = TransitionMatrix.load(profile=HandProfile(solving_mode="OH", m_slice_hand="right"))
+        matrix_oh_left = TransitionMatrix.load(profile=HandProfile(solving_mode="OH", m_slice_hand="left"))
+        assert matrix_oh_left.transitions == matrix_oh_right.transitions
 
     def test_calibrated_oh_matrix_lse_m_u_invariants(self):
         matrix_oh = TransitionMatrix.load_oh()

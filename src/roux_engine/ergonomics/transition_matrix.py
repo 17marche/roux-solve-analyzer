@@ -188,9 +188,9 @@ class TransitionMatrix:
     def _interpolate_fallback(self, prev_move: str, curr_move: str) -> float:
         """Interpolates effort for unobserved bigrams using biomechanical rules (Rule 6).
 
-        1. Strip wide notation (r -> R, l -> L).
+        1. Strip wide notation (r -> R, l -> L, u -> U, etc.).
         2. Query the underlying outer-layer transition.
-        3. Apply the appropriate drag factor (1.12x for r, 1.15x for L/l).
+        3. Apply the 1.12x rotational drag factor for wide turns.
         4. Apply anatomical awkwardness modifiers if needed.
         """
         is_prev_valid = MoveParser.is_valid_move_token(prev_move)
@@ -203,7 +203,7 @@ class TransitionMatrix:
             if not token:
                 return token, 1.0
             face = token[0]
-            if face.islower():
+            if face in "rludfb":
                 # Any wide move (r, l, u, d, f, b) maps to outer layer with 1.12x rotational drag factor
                 return face.upper() + token[1:], 1.12
             return token, 1.0
