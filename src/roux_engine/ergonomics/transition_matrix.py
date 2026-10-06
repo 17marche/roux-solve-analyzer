@@ -32,7 +32,7 @@ class TransitionMatrix:
         self.profile = profile or HandProfile()
         self.transitions = dict(transitions)
         self.metadata = dict(metadata or {})
-        if self.profile.m_slice_hand.lower() == "left":
+        if self.profile.solving_mode.upper() == "2H" and self.profile.m_slice_hand.lower() == "left":
             self._apply_left_m_slice_adaptation()
 
     def _apply_left_m_slice_adaptation(self) -> None:
@@ -203,12 +203,9 @@ class TransitionMatrix:
             if not token:
                 return token, 1.0
             face = token[0]
-            if face == "r":
-                return "R" + token[1:], 1.12
-            if face == "l":
-                return "L" + token[1:], 1.15
-            if face == "L":
-                return token, 1.15
+            if face.islower():
+                # Any wide move (r, l, u, d, f, b) maps to outer layer with 1.12x rotational drag factor
+                return face.upper() + token[1:], 1.12
             return token, 1.0
 
         outer_prev, drag_prev = _strip_and_drag(prev_move) if is_prev_valid else (prev_move, 1.0)

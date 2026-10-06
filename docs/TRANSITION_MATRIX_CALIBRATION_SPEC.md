@@ -47,7 +47,7 @@ Therefore:
 * A value of **`3.0`** represents a slow/unmeasured turn taking **300 ms** (3.3 TPS).
 
 $\Delta t$ measures the **elapsed time from the completion of Move $A$ to the completion of Move $B$**. It encompasses:
-$$\Delta t = (\text{inter-move pause / transition delay}) + (\text{execution time of Move } B)$$
+$$\Delta t = (\text{inter-move pause / transition latency}) + (\text{execution time of Move } B)$$
 *(or less if Move $B$ was initiated while Move $A$ was completing, i.e., overlapping turning).*
 
 ---

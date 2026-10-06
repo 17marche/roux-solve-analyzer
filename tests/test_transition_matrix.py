@@ -377,6 +377,39 @@ class TestCalibrated2HMatrixInvariants:
         assert matrix_left["L'U'"] == matrix_right["L'U'"]
         assert matrix_left["FU"] == matrix_right["FU"]
 
+    def test_left_m_slice_adaptation_does_not_affect_oh(self):
+        matrix_oh_right = TransitionMatrix.load(profile=HandProfile(solving_mode="OH", m_slice_hand="right"))
+        matrix_oh_left = TransitionMatrix.load(profile=HandProfile(solving_mode="OH", m_slice_hand="left"))
+        assert matrix_oh_left.transitions == matrix_oh_right.transitions
+
+    def test_fallback_interpolation_wide_turns_and_l(self):
+        matrix = TransitionMatrix.load_2h()
+        # Wide l inherits from outer L with 1.12x wide drag factor (not 1.15x)
+        effort_l_u = matrix.get_effort("l", "U")
+        effort_L_u = matrix.get_effort("L", "U")
+        assert abs(effort_l_u - round(effort_L_u * 1.12, 4)) < 1e-4
+
+        # Wide u inherits from outer U with 1.12x wide drag factor
+        effort_u_r = matrix.get_effort("u", "R")
+        effort_U_r = matrix.get_effort("U", "R")
+        assert abs(effort_u_r - round(effort_U_r * 1.12, 4)) < 1e-4
+
+        # Dual wide turns l and r apply 1.12 * 1.12 drag
+        effort_l_r = matrix.get_effort("l", "r")
+        effort_L_R = matrix.get_effort("L", "R")
+        assert abs(effort_l_r - round(effort_L_R * 1.12 * 1.12, 4)) < 1e-4
+
+    def test_calibrated_oh_matrix_lse_m_u_invariants(self):
+        matrix_oh = TransitionMatrix.load_oh()
+        # AUF pause corrected in OH (should be ~1.33, not 2.39)
+        assert matrix_oh["U'M'"] < 1.50
+        # Index pull faster than push in OH
+        assert matrix_oh["U'M'"] < matrix_oh["UM'"]
+        assert matrix_oh["M2U'"] < matrix_oh["M2U"]
+        # Sensor clamp floor corrected in OH (should be ~1.45, not 0.85)
+        assert matrix_oh["U2M'"] > 1.20
+
+
 
 
 
