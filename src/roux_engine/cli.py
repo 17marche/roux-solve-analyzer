@@ -430,7 +430,14 @@ def format_solver_report(result: FullSolveResult) -> str:
     lines.append("                      ROUX SCRAMBLE SOLVER REPORT")
     lines.append("=" * 80)
     lines.append(f"  Scramble: {result.scramble}")
-    lines.append(f"  Total:    {result.total_stm} STM moves [{result.duration_ms:.2f} ms]")
+    dur_str = f" [{result.duration_ms:.2f} ms]"
+    lines.append(f"  Total:    {result.total_stm} STM moves // {result.total_e_stm:.2f} E-STM{dur_str}")
+    lines.append(f"  Flow:     {result.kinematic_efficiency:.1f}% Kinematic Flow Efficiency")
+    if result.profile == "2H" and result.m_slice_hand:
+        profile_desc = f"2H ({result.m_slice_hand}-handed M-slice)"
+    else:
+        profile_desc = result.profile
+    lines.append(f"  Profile:  {profile_desc} [ranked by {result.rank_by}]")
     status_str = "VALID ROUX SOLVE" if result.is_valid else "INVALID / INCOMPLETE"
     lines.append(f"  Status:   {status_str} (style={result.style})")
     lines.append("-" * 80)
@@ -445,34 +452,46 @@ def format_solver_report(result: FullSolveResult) -> str:
     # 1. FB
     fb_moves_str = " ".join(result.fb.moves) if result.fb.moves else "0 moves"
     fb_s = "s" if result.fb.move_count != 1 else ""
-    lines.append(f"  • {'First Block (FB):':<22} {fb_moves_str} // {result.fb.move_count} move{fb_s}")
+    fb_e_val = f" ({result.fb.e_stm:.2f} E-STM)" if result.fb.e_stm is not None else ""
+    lines.append(f"  • {'First Block (FB):':<22} {fb_moves_str} // {result.fb.move_count} move{fb_s}{fb_e_val}")
     lines.append(f"    - {'Orientation:':<20} {result.fb.orientation}")
+    if result.fb.e_stm is not None:
+        lines.append(f"    - {'E-STM:':<20} {result.fb.e_stm:.2f}")
     lines.append("")
 
     # 2. SB
     sb_moves_str = " ".join(result.sb.moves) if result.sb.moves else "0 moves"
     sb_s = "s" if result.sb.move_count != 1 else ""
+    sb_e_val = f" ({result.sb.e_stm:.2f} E-STM)" if result.sb.e_stm is not None else ""
     style_label = "Free Blockbuilding" if result.sb.style == "free" else (
         "Classical Standard" if result.sb.style == "classical" else "Square + Pair"
     )
-    lines.append(f"  • {'Second Block (SB):':<22} {sb_moves_str} // {result.sb.move_count} move{sb_s}")
+    lines.append(f"  • {'Second Block (SB):':<22} {sb_moves_str} // {result.sb.move_count} move{sb_s}{sb_e_val}")
     lines.append(f"    - {'Paradigm:':<20} {style_label}")
+    if result.sb.e_stm is not None:
+        lines.append(f"    - {'E-STM:':<20} {result.sb.e_stm:.2f}")
     lines.append("")
 
     # 3. CMLL
     cmll_moves_str = " ".join(result.cmll_moves) if result.cmll_moves else "0 moves // Skip"
     cmll_s = "s" if result.cmll_stm != 1 else ""
-    lines.append(f"  • {'CMLL:':<22} {cmll_moves_str} // {result.cmll_stm} move{cmll_s}")
-    lines.append(f"    - {'Group / Case:':<20} {result.cmll_group} ({result.cmll_case})")
-    lines.append(f"    - {'Pre-AUF:':<20} '{result.cmll_pre_auf}'" if result.cmll_pre_auf else f"    - {'Pre-AUF:':<20} None")
-    lines.append(f"    - {'Post-AUF:':<20} '{result.cmll_post_auf}'" if result.cmll_post_auf else f"    - {'Post-AUF:':<20} None")
+    cmll_e_val = f" ({result.cmll_e_stm:.2f} E-STM)"
+    lines.append(f"  • {'CMLL:':<22} {cmll_moves_str} // {result.cmll_stm} move{cmll_s}{cmll_e_val}")
+    pre_auf_desc = f"'{result.cmll_pre_auf}'" if result.cmll_pre_auf else "None"
+    lines.append(f"    - {'Pre-AUF:':<20} {pre_auf_desc}")
+    post_auf_desc = f"'{result.cmll_post_auf}'" if result.cmll_post_auf else "None"
+    lines.append(f"    - {'Post-AUF:':<20} {post_auf_desc}")
+    lines.append(f"    - {'E-STM:':<20} {result.cmll_e_stm:.2f}")
     lines.append("")
 
     # 4. LSE
     lse_moves_str = " ".join(result.lse.moves) if result.lse.moves else "0 moves // Skip"
     lse_s = "s" if result.lse.move_count != 1 else ""
-    lines.append(f"  • {'Last Six Edges (LSE):':<22} {lse_moves_str} // {result.lse.move_count} move{lse_s}")
+    lse_e_val = f" ({result.lse.e_stm:.2f} E-STM)" if result.lse.e_stm is not None else ""
+    lines.append(f"  • {'Last Six Edges (LSE):':<22} {lse_moves_str} // {result.lse.move_count} move{lse_s}{lse_e_val}")
     lines.append(f"    - {'Target:':<20} {result.lse.target}")
+    if result.lse.e_stm is not None:
+        lines.append(f"    - {'E-STM:':<20} {result.lse.e_stm:.2f}")
     lines.append("-" * 80)
 
     # Full Solution
@@ -498,18 +517,46 @@ def handle_solve(argv: list[str]) -> int:
         prog="roux solve",
         description="Solve a Rubik's Cube scramble from scratch using the 4-phase Roux method.",
     )
-    parser.add_argument("-s", "--scramble", type=str, help="Scramble move sequence string")
+    parser.add_argument(
+        "scramble_pos",
+        nargs="?",
+        type=str,
+        default=None,
+        help="Scramble move sequence string (positional argument)",
+    )
+    parser.add_argument("-s", "--scramble", type=str, default=None, help="Scramble move sequence string")
     parser.add_argument(
         "--style",
         type=str,
         choices=["free", "classical", "square_pair"],
         default="free",
-        help="Second Block solving paradigm: 'free' (optimal), 'classical' (human-style), or 'square_pair' (default: free)",
+        help="SB paradigm: 'free' (optimal), 'classical' (human-style), or 'square_pair'",
+    )
+    parser.add_argument(
+        "--rank-by",
+        type=str,
+        choices=["e_stm", "stm"],
+        default="e_stm",
+        help="Candidate ranking metric: 'e_stm' (ergonomic, default) or 'stm' (raw movecount)",
+    )
+    parser.add_argument(
+        "--profile",
+        type=str,
+        choices=["2H", "OH"],
+        default="2H",
+        help="Solving style profile: '2H' (Two-Handed, default) or 'OH' (One-Handed)",
+    )
+    parser.add_argument(
+        "--m-slice-hand",
+        type=str,
+        choices=["right", "left"],
+        default="right",
+        help="Hand used for M-slice turns in 2H mode: 'right' (default) or 'left'",
     )
     parser.add_argument("-j", "--json", action="store_true", help="Output raw JSON format")
 
     args = parser.parse_args(argv)
-    scramble = args.scramble
+    scramble = args.scramble if args.scramble is not None else args.scramble_pos
     if not scramble:
         try:
             scramble = input("Enter Scramble: ").strip()
@@ -520,7 +567,13 @@ def handle_solve(argv: list[str]) -> int:
         print("Error: Scramble must be provided.", file=sys.stderr)
         return 1
 
-    result = solve_scramble(scramble=scramble, style=args.style)
+    hand_profile = HandProfile(solving_mode=args.profile, m_slice_hand=args.m_slice_hand)
+    result = solve_scramble(
+        scramble=scramble,
+        style=args.style,
+        rank_by=args.rank_by,
+        hand_profile=hand_profile,
+    )
     if args.json:
         print(result.to_json(indent=2))
     else:

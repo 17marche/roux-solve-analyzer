@@ -1,5 +1,6 @@
 """Tests for end-to-end RouxScrambleSolver and solve_scramble."""
 
+import json
 import pytest
 from roux_engine.core.cube import CubeState
 from roux_engine.core.parser import MoveParser
@@ -105,3 +106,82 @@ def test_solve_scramble_diverse_scrambles(scramble: str):
     cube = CubeState().apply_moves(scramble)
     cube.apply_moves(result.full_moves_str)
     assert cube.is_solved(allow_rotations=True) is True
+
+
+def test_solve_scramble_ergonomic_metrics_default(sample_scramble: str):
+    """Verifies that default solve_scramble returns full ergonomic metrics and consistent E-STM sums."""
+    result: FullSolveResult = solve_scramble(sample_scramble)
+
+    assert result.is_valid is True
+    assert result.rank_by == "e_stm"
+    assert result.profile == "2H"
+    assert result.m_slice_hand == "right"
+
+    # Per-phase E-STM metrics
+    assert result.fb.e_stm is not None and result.fb.e_stm > 0
+    assert result.sb.e_stm is not None and result.sb.e_stm > 0
+    assert result.cmll_e_stm > 0
+    assert result.lse.e_stm is not None and result.lse.e_stm > 0
+
+    # Total E-STM and Kinematic Flow Efficiency
+    expected_e_stm = result.fb.e_stm + result.sb.e_stm + result.cmll_e_stm + result.lse.e_stm
+    assert result.total_e_stm == pytest.approx(expected_e_stm, abs=1e-3)
+
+    expected_eff = min(100.0, (result.total_stm / result.total_e_stm * 100.0))
+    assert result.kinematic_efficiency == pytest.approx(expected_eff, abs=0.05)
+    assert result.kinematic_efficiency <= 100.0
+
+
+def test_solve_scramble_rank_by_stm(sample_scramble: str):
+    """Verifies that solve_scramble accepts rank_by='stm' and populates ergonomic metrics."""
+    result: FullSolveResult = solve_scramble(sample_scramble, rank_by="stm")
+
+    assert result.is_valid is True
+    assert result.rank_by == "stm"
+    assert result.fb.e_stm is not None
+    assert result.sb.e_stm is not None
+    assert result.lse.e_stm is not None
+    assert result.cmll_e_stm > 0
+    assert result.total_e_stm > 0
+    assert result.kinematic_efficiency <= 100.0
+
+
+def test_solve_scramble_profile_and_hand_preference(sample_scramble: str):
+    """Verifies that solve_scramble accepts profile and m_slice_hand configurations."""
+    result_left = solve_scramble(sample_scramble, profile="2H", m_slice_hand="left")
+    assert result_left.is_valid is True
+    assert result_left.profile == "2H"
+    assert result_left.m_slice_hand == "left"
+
+    result_oh = solve_scramble(sample_scramble, profile="OH")
+    assert result_oh.is_valid is True
+    assert result_oh.profile == "OH"
+
+
+def test_solve_scramble_json_serialization_ergonomics(sample_scramble: str):
+    """Verifies that to_dict and to_json serialize all ergonomic metrics cleanly."""
+    result = solve_scramble(sample_scramble)
+    d = result.to_dict()
+
+    assert "total_e_stm" in d
+    assert d["total_e_stm"] == pytest.approx(result.total_e_stm, abs=1e-3)
+    assert "kinematic_efficiency" in d
+    assert d["kinematic_efficiency"] == pytest.approx(result.kinematic_efficiency, abs=1e-2)
+    assert d["rank_by"] == "e_stm"
+    assert d["profile"] == "2H"
+    assert d["m_slice_hand"] == "right"
+
+    assert "e_stm" in d["fb"]
+    assert d["fb"]["e_stm"] == result.fb.e_stm
+    assert "e_stm" in d["sb"]
+    assert d["sb"]["e_stm"] == result.sb.e_stm
+    assert "e_stm" in d["cmll"]
+    assert d["cmll"]["e_stm"] == result.cmll_e_stm
+    assert "e_stm" in d["lse"]
+    assert d["lse"]["e_stm"] == result.lse.e_stm
+
+    # Check to_json() valid JSON parsing
+    parsed = json.loads(result.to_json())
+    assert parsed["total_e_stm"] == d["total_e_stm"]
+    assert parsed["kinematic_efficiency"] == d["kinematic_efficiency"]
+

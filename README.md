@@ -119,32 +119,38 @@ uv run roux solve -s "D2 F2 R2 B2 U L2 U2 F2 D R2 B2 R B U2 L B2 D2 F R2 B2"
                       ROUX SCRAMBLE SOLVER REPORT
 ================================================================================
   Scramble: D2 F2 R2 B2 U L2 U2 F2 D R2 B2 R B U2 L B2 D2 F R2 B2
-  Total:    36 STM moves [12.4 ms search]
+  Total:    33 STM moves // 32.47 E-STM [1542.52 ms]
+  Flow:     100.0% Kinematic Flow Efficiency
+  Profile:  2H (right-handed M-slice) [ranked by e_stm]
   Status:   VALID ROUX SOLVE (style=free)
 --------------------------------------------------------------------------------
 Phase Breakdown:
 --------------------------------------------------------------------------------
-  • Inspection:            None
+  • Inspection:            y2 x'
 
-  • First Block (FB):      D r2 D F D' R2 B' // 7 moves
-    - Orientation:         YELLOW-ORANGE
+  • First Block (FB):      M2 B2 U R2 D' // 5 moves (6.92 E-STM)
+    - Orientation:         YELLOW-RED
+    - E-STM:               6.92
 
-  • Second Block (SB):     R2 U' R M U M2 U2 r' U R' // 10 moves
+  • Second Block (SB):     U' R U' r' U R' U' M U r' // 10 moves (9.83 E-STM)
     - Paradigm:            Free Blockbuilding
+    - E-STM:               9.83
 
-  • CMLL:                  R U2' R' U2' R' F R F' U' // 9 moves
-    - Group / Case:        Antisune (as_x_checkerboard)
+  • CMLL:                  R U R' U R U2 R' U' // 8 moves (5.21 E-STM)
+    - Group / Case:        Sune (s_left_bar)
     - Pre-AUF:             None
     - Post-AUF:            'U''
+    - E-STM:               5.21
 
-  • Last Six Edges (LSE):  U' M U M' U M' U M U2 M2 // 10 moves
+  • Last Six Edges (LSE):  U2 M U M2 U2 M' U M U2 M' // 10 moves (10.51 E-STM)
     - Target:              lse
+    - E-STM:               10.51
 --------------------------------------------------------------------------------
 Full Solution:
-  D r2 D F D' R2 B' R2 U' R M U M2 U2 r' U R' R U2' R' U2' R' F R F' U' U' M U M' U M' U M U2 M2
+  y2 x' M2 B2 U R2 D' U' R U' r' U R' U' M U r' R U R' U R U2 R' U' U2 M U M2 U2 M' U M U2 M'
 --------------------------------------------------------------------------------
 3D Interactive Visualization (alg.cubing.net):
-  https://alg.cubing.net/?setup=D2+F2+R2+B2+U+L2+U2+F2+D+R2+B2+R+B+U2+L+B2+D2+F+R2+B2&alg=D+r2+D+F+D%27+R2+B%27+R2+U%27+R+M+U+M2+U2+r%27+U+R%27+R+U2%27+R%27+U2%27+R%27+F+R+F%27+U%27+U%27+M+U+M%27+U+M%27+U+M+U2+M2
+  https://alg.cubing.net/?setup=D2+F2+R2+B2+U+L2+U2+F2+D+R2+B2+R+B+U2+L+B2+D2+F+R2+B2&alg=y2+x%27+M2+B2+U+R2+D%27+U%27+R+U%27+r%27+U+R%27+U%27+M+U+r%27+R+U+R%27+U+R+U2+R%27+U%27+U2+M+U+M2+U2+M%27+U+M+U2+M%27
 ================================================================================
   💡 Tip: Run with `--style classical` for human-mimetic pair building!
 ================================================================================
@@ -160,10 +166,19 @@ Click the generated [alg.cubing.net](https://alg.cubing.net/) URL in the termina
 The `roux` command provides an intuitive sub-command interface:
 
 ### 1. Solve a Scramble (`roux solve`)
-Finds a complete Roux solution from an unsolved scramble string:
+Finds a complete Roux solution from an unsolved scramble string, optimized for hand preference and biomechanical flow:
 ```bash
-# Optimal / Machine-Shortest Solution (default: Free SB)
+# Ergonomic Solution (default: ranked by e_stm, 2H, right-handed M-slice)
 uv run roux solve -s "..."
+
+# Candidate Ranking by Raw Movecount (STM)
+uv run roux solve -s "..." --rank-by stm
+
+# Left-Handed M-Slice Flicking Adaptation
+uv run roux solve -s "..." --m-slice-hand left
+
+# One-Handed (OH) Biomechanical Profile
+uv run roux solve -s "..." --profile OH
 
 # Human-Style Solution (Classical DR -> Pair 1 -> Pair 2)
 uv run roux solve -s "..." --style classical
@@ -174,6 +189,16 @@ uv run roux solve -s "..." --style square_pair
 # Output Raw JSON for programmatic pipelines
 uv run roux solve -s "..." -j
 ```
+
+When run with `--json` / `-j`, `roux solve` returns a structured JSON payload containing:
+- `total_stm`: Total Slice Turn Metric movecount across all phases.
+- `total_e_stm`: Total Effective STM difficulty score incorporating bigram transitions and regrips.
+- `kinematic_efficiency`: Overall Kinematic Flow Efficiency percentage (capped at 100%).
+- `rank_by`: Active ranking metric (`"e_stm"` or `"stm"`).
+- `profile`: Active solving style (`"2H"` or `"OH"`).
+- `m_slice_hand`: Active M-slice flicking preference (`"right"` or `"left"`).
+- `fb`, `sb`, `cmll`, `lse`: Structured phase dictionaries containing moves, move counts, and individual phase `e_stm` values.
+
 
 ### 2. Segment and Critique a Solve (`roux analyze`)
 Partitions an existing human solve transcript into Roux phases with movecount breakdown and execution metrics:
