@@ -3,7 +3,7 @@
 from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Union
 
 
 class GripState(str, Enum):
@@ -38,6 +38,18 @@ class HandProfile:
             object.__setattr__(self, "solving_mode", self.style)
         elif not self.style:
             object.__setattr__(self, "style", self.solving_mode)
+
+    @classmethod
+    def resolve(
+        cls,
+        profile: Optional[Union[str, HandProfile]] = None,
+        hand_profile: Optional[HandProfile] = None,
+    ) -> Optional[HandProfile]:
+        """Resolves a canonical HandProfile from either a HandProfile instance or profile string."""
+        prof = hand_profile if hand_profile is not None else profile
+        if isinstance(prof, str):
+            return cls(solving_mode=prof.strip().upper())
+        return prof
 
 
 

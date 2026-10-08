@@ -14,6 +14,7 @@ import numpy as np
 
 from ..core.constants import Color
 from ..core.cube import CubeState
+from ..ergonomics.models import HandProfile
 from .fb_indexer import FBIndexer
 from .fb_pdb import FBPDB
 from .pdb_generator import FB_MOVESET, build_transition_tables
@@ -178,6 +179,8 @@ class FBSolver:
         timeout_ms: Optional[float] = None,
         rank_by: Literal["stm", "e_stm"] = "stm",
         top_k: Optional[int] = None,
+        profile: Optional[Union[str, HandProfile]] = None,
+        hand_profile: Optional[HandProfile] = None,
     ) -> List[FBSolution]:
         """Convenience class method forwarding to get_instance().solve."""
         return cls.get_instance().solve(
@@ -187,6 +190,8 @@ class FBSolver:
             timeout_ms=timeout_ms,
             rank_by=rank_by,
             top_k=top_k,
+            profile=profile,
+            hand_profile=hand_profile,
         )
 
     def _ida_search(
@@ -265,6 +270,8 @@ class FBSolver:
         timeout_ms: Optional[float] = None,
         rank_by: Literal["stm", "e_stm"] = "stm",
         top_k: Optional[int] = None,
+        profile: Optional[Union[str, HandProfile]] = None,
+        hand_profile: Optional[HandProfile] = None,
     ) -> List[FBSolution]:
         """Discovers the top-K candidate First Block solutions using IDA* search.
 
@@ -275,12 +282,16 @@ class FBSolver:
             timeout_ms: Optional search timeout in milliseconds.
             rank_by: Ranking metric for candidate solutions ("stm" or "e_stm").
             top_k: Optional alias for k.
+            profile: Optional solving profile ("2H", "OH", or HandProfile).
+            hand_profile: Optional HandProfile domain model instance.
 
         Returns:
             List of top-K FBSolution objects ranked by rank_by metric (ascending).
         """
         if top_k is not None:
             k = top_k
+
+        prof = HandProfile.resolve(profile=profile, hand_profile=hand_profile)
 
         if rank_by not in ("stm", "e_stm"):
             raise ValueError(f"rank_by must be 'stm' or 'e_stm', got {rank_by}")
@@ -365,7 +376,7 @@ class FBSolver:
         if rank_by == "e_stm":
             scored_candidates: List[FBSolution] = []
             for cand in candidates:
-                score = self.flow_scorer.score_moves(cand.moves)
+                score = self.flow_scorer.score_moves(cand.moves, profile=prof)
                 scored_candidates.append(
                     FBSolution(
                         moves=cand.moves,
@@ -391,6 +402,8 @@ def solve_fb(
     timeout_ms: Optional[float] = 10.0,
     rank_by: Literal["stm", "e_stm"] = "stm",
     top_k: Optional[int] = None,
+    profile: Optional[Union[str, HandProfile]] = None,
+    hand_profile: Optional[HandProfile] = None,
 ) -> List[FBSolution]:
     """Solves First Block using Top-K Candidate Search IDA* heuristic search.
 
@@ -401,6 +414,8 @@ def solve_fb(
         timeout_ms: Optional search timeout in milliseconds (default 10ms).
         rank_by: Ranking metric for candidate solutions ("stm" or "e_stm").
         top_k: Optional alias for k.
+        profile: Optional solving profile ("2H", "OH", or HandProfile).
+        hand_profile: Optional HandProfile domain model instance.
 
     Returns:
         List of top-K FBSolution candidate move sequences.
@@ -413,6 +428,8 @@ def solve_fb(
         timeout_ms=timeout_ms,
         rank_by=rank_by,
         top_k=top_k,
+        profile=profile,
+        hand_profile=hand_profile,
     )
 
 

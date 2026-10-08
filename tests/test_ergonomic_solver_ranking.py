@@ -163,3 +163,200 @@ class TestSBTopKErgonomicRanking:
                 assert sols[i].e_stm <= sols[i + 1].e_stm
 
 
+class TestLSETopKErgonomicRanking:
+    """LSE Top-K Candidate Search with rank_by='e_stm' | 'stm' and HandProfile parameterization."""
+
+    def test_lse_solution_has_optional_e_stm(self):
+        from roux_engine.solver.lse_solver import LSESolution
+
+        sol = LSESolution(
+            target="4a",
+            moves=["M", "U"],
+            move_count=2,
+            case_name="standard_eo",
+            e_stm=1.85,
+        )
+        assert sol.e_stm == 1.85
+
+        sol_default = LSESolution(
+            target="4a",
+            moves=["M", "U"],
+            move_count=2,
+            case_name="standard_eo",
+        )
+        assert sol_default.e_stm is None
+
+    def test_solve_lse_accepts_rank_by_and_top_k(self):
+        from roux_engine.solver.lse_solver import solve_lse
+
+        cube = CubeState().apply_moves("M' U2 M U M2")
+        # STM ranking preserves shortest move count order
+        sols_stm = solve_lse(cube, target="4a", top_k=3, rank_by="stm")
+        assert len(sols_stm) > 0
+        assert sols_stm[0].e_stm is None
+        for i in range(len(sols_stm) - 1):
+            assert sols_stm[i].move_count <= sols_stm[i + 1].move_count
+
+        # E-STM ranking orders monotonically by e_stm
+        sols_estm = solve_lse(cube, target="4a", top_k=3, rank_by="e_stm")
+        assert len(sols_estm) > 0
+        assert sols_estm[0].e_stm is not None
+        for i in range(len(sols_estm) - 1):
+            assert sols_estm[i].e_stm is not None
+            assert sols_estm[i + 1].e_stm is not None
+            assert sols_estm[i].e_stm <= sols_estm[i + 1].e_stm
+
+    def test_solve_lse_expands_to_depth_l_plus_2(self):
+        from roux_engine.solver.lse_solver import solve_lse
+
+        cube = CubeState().apply_moves("U M' U2 M U M2")
+        # Querying with rank_by="e_stm" searches optimal depth L and expands to L+1 and L+2
+        sols = solve_lse(cube, target="4b", top_k=6, rank_by="e_stm")
+        assert len(sols) > 0
+        # Check that solutions include depths beyond optimal L
+        lengths = {s.move_count for s in sols}
+        assert len(lengths) > 1, f"Expected candidates at multiple depths, got lengths: {lengths}"
+
+    def test_solve_lse_1look_ranks_by_e_stm_and_solves_cube(self):
+        from roux_engine.solver.lse_solver import solve_lse
+
+        cube = CubeState().apply_moves("U M' U2 M U M2")
+        sols = solve_lse(cube, target="1look", top_k=3, rank_by="e_stm")
+        assert len(sols) > 0
+        for s in sols:
+            assert s.e_stm is not None
+            # Every candidate must completely solve the cube
+            sim = cube.copy().apply_moves(s.moves)
+            assert sim.is_solved(), f"Candidate {s.moves} failed to solve cube"
+
+        # Check monotonic ordering
+        for i in range(len(sols) - 1):
+            assert sols[i].e_stm <= sols[i + 1].e_stm
+
+    def test_solve_lse_m_slice_handedness_adaptation(self):
+        from roux_engine.ergonomics.models import HandProfile
+        from roux_engine.solver.lse_solver import solve_lse
+
+        # Cube state with asymmetric LSE candidate paths
+        cube = CubeState().apply_moves("U M' U2 M U M2")
+
+        prof_right = HandProfile(solving_mode="2H", m_slice_hand="right")
+        prof_left = HandProfile(solving_mode="2H", m_slice_hand="left")
+
+        sols_right = solve_lse(cube, target="1look", top_k=5, rank_by="e_stm", profile=prof_right)
+        sols_left = solve_lse(cube, target="1look", top_k=5, rank_by="e_stm", profile=prof_left)
+
+        assert len(sols_right) > 0
+        assert len(sols_left) > 0
+        # E-STM values should reflect the handedness adaptation
+        e_right = [s.e_stm for s in sols_right]
+        e_left = [s.e_stm for s in sols_left]
+        assert e_right != e_left, "Expected different E-STM scores between right and left M-slice flicking"
+
+    def test_fb_and_sb_solvers_accept_hand_profile(self):
+        from roux_engine.ergonomics.models import HandProfile
+        from roux_engine.solver.fb_solver import solve_fb
+        from roux_engine.solver.sb_solver import solve_sb
+
+        prof_right = HandProfile(solving_mode="2H", m_slice_hand="right")
+        prof_left = HandProfile(solving_mode="2H", m_slice_hand="left")
+        prof_oh = HandProfile(solving_mode="OH")
+
+        # FB solver accepts HandProfile
+        fb_sols_2h = solve_fb("U' R'", top_k=2, rank_by="e_stm", profile=prof_right)
+        fb_sols_oh = solve_fb("U' R'", top_k=2, rank_by="e_stm", profile=prof_oh)
+        assert len(fb_sols_2h) > 0
+        assert len(fb_sols_oh) > 0
+
+        # SB solver accepts HandProfile
+        c = CubeState().apply_moves("R U' R2 U r U' r' M2")
+        sb_sols_r = solve_sb(c, top_k=2, rank_by="e_stm", profile=prof_right)
+        sb_sols_l = solve_sb(c, top_k=2, rank_by="e_stm", profile=prof_left)
+        assert len(sb_sols_r) > 0
+        assert len(sb_sols_l) > 0
+
+    def test_solve_lse_solved_state_with_e_stm(self):
+        from roux_engine.solver.lse_solver import solve_lse
+
+        clean = CubeState()
+        sols = solve_lse(clean, target="all", rank_by="e_stm")
+        for s in sols:
+            assert s.move_count == 0
+            assert s.moves == []
+            assert s.e_stm == 0.0
+
+    def test_solve_lse_step_4c_with_e_stm(self):
+        from roux_engine.solver.lse_solver import solve_lse
+
+        cube_dots = CubeState().apply_moves("M' U2 M2 U2 M'")
+        sols = solve_lse(cube_dots, target="4c", rank_by="e_stm")
+        assert len(sols) == 1
+        assert sols[0].case_name == "dots"
+        assert sols[0].e_stm is not None
+        assert sols[0].e_stm > 0.0
+
+    def test_solve_lse_paths_with_e_stm(self):
+        from roux_engine.solver.lse_solver import solve_lse_paths
+        from roux_engine.ergonomics.models import HandProfile
+
+        cube = CubeState().apply_moves("M U' M U M2 U M U M' U2")
+        prof = HandProfile(solving_mode="2H", m_slice_hand="right")
+        paths = solve_lse_paths(cube, rank_by="e_stm", profile=prof)
+
+        assert "standard" in paths
+        assert "eolr" in paths
+        assert "eolr_misoriented" in paths
+        assert "eolr_b" in paths
+
+        for name, p in paths.items():
+            assert p.e_stm is not None
+            assert p.step_4a.e_stm is not None
+            assert p.step_4b.e_stm is not None
+            assert p.step_4c.e_stm is not None
+            assert p.e_stm > 0.0
+
+    def test_solve_lse_backward_compatibility_defaults(self):
+        from roux_engine.solver.lse_solver import solve_lse
+
+        cube = CubeState().apply_moves("M'")
+        sols = solve_lse(cube, target="4a")
+        # Default behavior retains stm and e_stm is None
+        assert len(sols) >= 1
+        assert sols[0].e_stm is None
+        assert sols[0].moves == ["M"]
+
+    def test_lse_candidates_depth_expansion_not_starved_by_depth_l(self):
+        from roux_engine.solver.lse_solver import LSEGraph
+
+        graph = LSEGraph()
+        graph._ensure_4a_tables()
+        cube = CubeState().apply_moves(["M", "U", "M'", "U"])
+        code = graph.encode_cube(cube)
+        cands = graph.get_candidates(code, graph.std_eo_targets, graph.dist_std_eo, k=5, rank_by="e_stm")
+        lengths = {len(p) for p, _ in cands}
+        # Optimal depth is 4; candidate collection must also explore deeper alternatives (e.g. 6)
+        assert 4 in lengths
+        assert any(l > 4 for l in lengths), f"Expected candidates at depth > 4, found {lengths}"
+
+    def test_lse_4a_misoriented_centers_classification(self):
+        from roux_engine.solver.lse_solver import solve_lse
+
+        cube = CubeState().apply_moves("M' U M U' M2")
+        sols = solve_lse(cube, target="4a", top_k=5, rank_by="e_stm", allow_misoriented_centers=True)
+        assert len(sols) > 0
+        for s in sols:
+            if s.center_state == "misaligned":
+                # When centers are misaligned, case must be eolr or eolr_b, never standard_eo
+                assert s.case_name in ("eolr", "eolr_b"), f"Unexpected misaligned standard_eo: {s}"
+
+    def test_hand_profile_resolve_helper(self):
+        from roux_engine.ergonomics.models import HandProfile
+
+        assert HandProfile.resolve(None) is None
+        p1 = HandProfile.resolve("oh")
+        assert p1 is not None and p1.solving_mode == "OH"
+        p2 = HandProfile(solving_mode="2H", m_slice_hand="left")
+        assert HandProfile.resolve(p2) == p2
+        assert HandProfile.resolve(profile="2H", hand_profile=p2) == p2
+
+

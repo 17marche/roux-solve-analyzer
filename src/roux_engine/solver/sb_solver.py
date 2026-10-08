@@ -117,6 +117,7 @@ from ..core.orientation import (
     get_dual_neutral_orientations,
     get_all_orientations,
 )
+from ..ergonomics.models import HandProfile
 
 
 
@@ -925,6 +926,8 @@ class SBSolver:
         allow_macro_triggers: bool = False,
         rank_by: Literal["stm", "e_stm"] = "stm",
         top_k: Optional[int] = None,
+        profile: Optional[Union[str, HandProfile]] = None,
+        hand_profile: Optional[HandProfile] = None,
     ) -> List[SBSolution]:
         """Discovers top-K candidate Second Block solutions using IDA* search.
 
@@ -938,10 +941,14 @@ class SBSolver:
             allow_macro_triggers: Whether to evaluate 4-STM compound moves (Sledgehammer, Hedge).
             rank_by: Ranking metric for candidate solutions ("stm" or "e_stm").
             top_k: Optional alias for k.
+            profile: Optional solving profile ("2H", "OH", or HandProfile).
+            hand_profile: Optional HandProfile domain model instance.
 
         Returns:
             List of top-K SBSolution candidate move sequences.
         """
+        prof = HandProfile.resolve(profile=profile, hand_profile=hand_profile)
+
         if isinstance(scramble_or_cube, str):
             cube = CubeState().apply_moves(scramble_or_cube)
         elif isinstance(scramble_or_cube, CubeState):
@@ -1100,7 +1107,7 @@ class SBSolver:
         if rank_by == "e_stm":
             scored: List[SBSolution] = []
             for sol in raw_sols:
-                score = self.flow_scorer.score_moves(sol.moves)
+                score = self.flow_scorer.score_moves(sol.moves, profile=prof)
                 scored.append(
                     SBSolution(
                         moves=sol.moves,
@@ -1133,6 +1140,8 @@ def solve_sb(
     timeout_ms: Optional[float] = None,
     allow_macro_triggers: bool = False,
     rank_by: Literal["stm", "e_stm"] = "stm",
+    profile: Optional[Union[str, HandProfile]] = None,
+    hand_profile: Optional[HandProfile] = None,
 ) -> List[SBSolution]:
     """Solves Second Block using Center-Aligned IDA* heuristic search.
 
@@ -1146,6 +1155,8 @@ def solve_sb(
         timeout_ms: Optional search timeout in milliseconds.
         allow_macro_triggers: Whether to evaluate 4-STM compound moves (Sledgehammer, Hedge).
         rank_by: Ranking metric for candidate solutions ("stm" or "e_stm").
+        profile: Optional solving profile ("2H", "OH", or HandProfile).
+        hand_profile: Optional HandProfile domain model instance.
 
     Returns:
         List of top-K SBSolution candidate move sequences.
@@ -1161,6 +1172,8 @@ def solve_sb(
         timeout_ms=timeout_ms,
         allow_macro_triggers=allow_macro_triggers,
         rank_by=rank_by,
+        profile=profile,
+        hand_profile=hand_profile,
     )
 
 
