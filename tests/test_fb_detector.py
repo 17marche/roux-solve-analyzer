@@ -98,7 +98,6 @@ def test_fb_solved_at_inspection_off_by_one():
 
 def test_fb_detector_uses_roux_orientation():
     """Verify FB detector match_fb_block returns RouxOrientation."""
-    from roux_engine.core.orientation import RouxOrientation
 
     clean_cube = CubeState()
     matched = FBDetector.match_fb_block(clean_cube)
@@ -110,7 +109,7 @@ def test_fb_detector_uses_roux_orientation():
 def test_legacy_detector_aliases_removed():
     """Verify legacy aliases BlockDefinition and ALL_BLOCK_DEFINITIONS are deleted from FBDetector."""
     import roux_engine.segmenter.fb_detector as seg_fb
-    from roux_engine.core.orientation import RouxOrientation, get_orientation
+    from roux_engine.core.orientation import get_orientation
 
     # 1. Block spec and dictionary legacy aliases are deleted
     assert not hasattr(seg_fb, "BlockDefinition")
