@@ -329,7 +329,7 @@ class PhaseInspector:
         profile: HandProfile,
     ) -> PhaseInspectionResult:
         """Inspects First Block candidate solutions."""
-        solutions = solve_fb(cube, k=top_k, rank_by="e_stm", hand_profile=profile)
+        solutions = solve_fb(cube, k=top_k, rank_by="e_stm", hand_profile=profile, timeout_ms=None)
         candidates: List[CandidateInspection] = []
         for rank, sol in enumerate(solutions, 1):
             cand = self._evaluate_candidate(
@@ -381,7 +381,7 @@ class PhaseInspector:
                 raise ValueError("First Block is not solved on the cube after --fb setup. FB must be solved before SB.")
         else:
             # Auto-cascade optimal FB
-            fb_sols = solve_fb(cube, k=1, rank_by="e_stm", hand_profile=profile)
+            fb_sols = solve_fb(cube, k=1, rank_by="e_stm", hand_profile=profile, timeout_ms=None)
             if not fb_sols:
                 raise RuntimeError("Failed to auto-solve First Block for Second Block inspection.")
             best_fb = fb_sols[0]
@@ -525,7 +525,7 @@ class PhaseInspector:
                     raise ValueError("First Block is not solved after --fb setup.")
             else:
                 # Auto-solve FB
-                fb_sols = solve_fb(cube, k=1, rank_by="e_stm", hand_profile=profile)
+                fb_sols = solve_fb(cube, k=1, rank_by="e_stm", hand_profile=profile, timeout_ms=None)
                 if not fb_sols:
                     raise RuntimeError("Failed to auto-solve First Block for LSE cascade.")
                 best_fb = fb_sols[0]
@@ -704,7 +704,7 @@ class PhaseInspector:
                 sim.apply_moves(" ".join(fb_toks))
                 setup_moves["fb"] = fb_toks
             else:
-                fb_sols = solve_fb(cube, k=1, rank_by="e_stm", hand_profile=profile)
+                fb_sols = solve_fb(cube, k=1, rank_by="e_stm", hand_profile=profile, timeout_ms=None)
                 if fb_sols:
                     if fb_sols[0].inspection_rotation:
                         fb_toks.extend(fb_sols[0].inspection_rotation.split())

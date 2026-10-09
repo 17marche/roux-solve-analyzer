@@ -306,6 +306,7 @@ class FBSolver:
         if k <= 0:
             raise ValueError(f"k must be at least 1, got {k}")
 
+        _ = self.pdb  # Ensure PDB lookup table is initialized before computing the deadline
         deadline = (time.perf_counter() + timeout_ms / 1000.0) if timeout_ms is not None else None
 
         if orientation is not None:
