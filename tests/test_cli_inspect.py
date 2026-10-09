@@ -255,5 +255,198 @@ class TestPhaseInspectorFlagsAndJson:
         assert "ROUX ERGONOMIC PHASE INSPECTOR" in captured.out
 
 
+class TestPhaseInspectorAudit:
+    """Slice 3: Interactive Human Audit Workflow (--audit) integration."""
+
+    def test_cli_inspect_audit_agree(self, sample_scramble: str, tmp_path, monkeypatch, capsys):
+        test_md = tmp_path / "ergonomic_audit.md"
+        test_jsonl = tmp_path / "ergonomic_audit.jsonl"
+
+        inputs = iter(["1", "Cube felt smooth"])
+        monkeypatch.setattr("builtins.input", lambda prompt="": next(inputs))
+
+        code = main([
+            "inspect", "-s", sample_scramble, "--phase", "fb", "--top-k", "2",
+            "--audit", "--audit-md", str(test_md), "--audit-jsonl", str(test_jsonl),
+        ])
+        assert code == 0
+        captured = capsys.readouterr()
+        out = captured.out
+
+        # Verifies candidates displayed normally
+        assert "ROUX ERGONOMIC PHASE INSPECTOR" in out
+        assert "Phase:      First Block (FB)" in out
+        assert "Candidate Solutions" in out
+
+        # Verifies interactive audit executed
+        assert "ERGONOMIC HUMAN AUDIT EVALUATION (--audit)" in out
+        assert "Audit logged: Agree" in out
+
+        # Verifies file output
+        assert test_md.exists()
+        assert test_jsonl.exists()
+        md_text = test_md.read_text()
+        assert "- [AGREE]" in md_text
+        assert "Cube felt smooth" in md_text
+        assert "### Solver Candidate Rankings" not in md_text
+
+        jsonl_lines = test_jsonl.read_text().strip().splitlines()
+        assert len(jsonl_lines) == 1
+        data = json.loads(jsonl_lines[0])
+        assert data["verdict"] == "agree"
+        assert data["domain_notes"] == "Cube felt smooth"
+
+    def test_cli_inspect_audit_disagree_candidate_inversion(self, sample_scramble: str, tmp_path, monkeypatch, capsys):
+        test_md = tmp_path / "ergonomic_audit.md"
+        test_jsonl = tmp_path / "ergonomic_audit.jsonl"
+
+        inputs = iter(["2", "2", "R U2 -> M'", "Candidate 2 flows better in physical 2H execution"])
+        monkeypatch.setattr("builtins.input", lambda prompt="": next(inputs))
+
+        code = main([
+            "inspect", "-s", sample_scramble, "--phase", "sb",
+            "--audit", "--audit-md", str(test_md), "--audit-jsonl", str(test_jsonl),
+        ])
+        assert code == 0
+        captured = capsys.readouterr()
+        out = captured.out
+
+        assert "ROUX ERGONOMIC PHASE INSPECTOR" in out
+        assert "Audit logged: Disagree (Candidate Inversion)" in out
+
+        # Detailed case block in markdown
+        md_text = test_md.read_text()
+        assert "## [DISAGREE: Candidate Inversion]" in md_text
+        assert f"- **Scramble**: `{sample_scramble}`" in md_text
+        assert "- **Phase**: Second Block (SB)" in md_text
+        assert "- **Preceding Setup Moves**:" in md_text
+        assert "- **Failure Category**: Candidate Inversion" in md_text
+        assert "- **Flagged Transitions**: R U2 -> M'" in md_text
+        assert "- **Human Preference**: Candidate #2" in md_text
+        assert "Candidate 2 flows better in physical 2H execution" in md_text
+        assert "### Solver Candidate Rankings:" in md_text
+
+        # Structured record in JSONL
+        jsonl_lines = test_jsonl.read_text().strip().splitlines()
+        assert len(jsonl_lines) == 1
+        data = json.loads(jsonl_lines[0])
+        assert data["verdict"] == "disagree"
+        assert data["failure_category"] == "candidate_inversion"
+        assert "Candidate #2" in data["human_preference"]
+        assert data["flagged_transitions"] == "R U2 -> M'"
+        assert "candidates" in data
+        assert len(data["candidates"]) > 0
+
+    def test_cli_inspect_audit_disagree_regrip_error(self, sample_scramble: str, tmp_path, monkeypatch, capsys):
+        test_md = tmp_path / "ergonomic_audit.md"
+        test_jsonl = tmp_path / "ergonomic_audit.jsonl"
+
+        inputs = iter(["3", "move 3 (R')", "1", "r U R'", "False-positive regrip reported"])
+        monkeypatch.setattr("builtins.input", lambda prompt="": next(inputs))
+
+        code = main([
+            "inspect", "-s", sample_scramble, "--phase", "fb", "--top-k", "2",
+            "--audit", "--audit-md", str(test_md), "--audit-jsonl", str(test_jsonl),
+        ])
+        assert code == 0
+        captured = capsys.readouterr()
+        assert "Audit logged: Disagree (Regrip Error)" in captured.out
+
+        md_text = test_md.read_text()
+        assert "## [DISAGREE: Regrip Error]" in md_text
+        assert "move 3 (R') (false-positive)" in md_text
+        assert "False-positive regrip reported" in md_text
+
+        jsonl_lines = test_jsonl.read_text().strip().splitlines()
+        data = json.loads(jsonl_lines[0])
+        assert data["failure_category"] == "regrip_error"
+        assert "move 3" in data["flagged_transitions"]
+
+    def test_cli_inspect_audit_disagree_transition_matrix_error(self, sample_scramble: str, tmp_path, monkeypatch, capsys):
+        test_md = tmp_path / "ergonomic_audit.md"
+        test_jsonl = tmp_path / "ergonomic_audit.jsonl"
+
+        inputs = iter(["4", "U2 -> M'", "", "Transition cost is distorted"])
+        monkeypatch.setattr("builtins.input", lambda prompt="": next(inputs))
+
+        code = main([
+            "inspect", "-s", sample_scramble, "--phase", "lse", "--target", "eolr", "--top-k", "2",
+            "--audit", "--audit-md", str(test_md), "--audit-jsonl", str(test_jsonl),
+        ])
+        assert code == 0
+        captured = capsys.readouterr()
+        assert "Audit logged: Disagree (Transition Matrix Error)" in captured.out
+
+        md_text = test_md.read_text()
+        assert "## [DISAGREE: Transition Matrix Error]" in md_text
+        assert "U2 -> M'" in md_text
+        assert "Transition cost is distorted" in md_text
+
+        jsonl_lines = test_jsonl.read_text().strip().splitlines()
+        data = json.loads(jsonl_lines[0])
+        assert data["failure_category"] == "transition_matrix_error"
+        assert data["flagged_transitions"] == "U2 -> M'"
+
+    def test_cli_inspect_audit_default_scratch_path(self, sample_scramble: str, monkeypatch, capsys):
+        from pathlib import Path
+        default_md = Path(".scratch/ergonomic_audit.md")
+        default_jsonl = Path(".scratch/ergonomic_audit.jsonl")
+
+        # Record original file size or non-existence
+        orig_md_exists = default_md.exists()
+        orig_jsonl_exists = default_jsonl.exists()
+        orig_md_len = len(default_md.read_text()) if orig_md_exists else 0
+        orig_jsonl_lines = len(default_jsonl.read_text().splitlines()) if orig_jsonl_exists else 0
+
+        inputs = iter(["1", "Testing default scratch persistence"])
+        monkeypatch.setattr("builtins.input", lambda prompt="": next(inputs))
+
+        orig_md_content = default_md.read_text() if orig_md_exists else None
+        orig_jsonl_content = default_jsonl.read_text() if orig_jsonl_exists else None
+
+        try:
+            code = main(["inspect", "-s", sample_scramble, "--phase", "fb", "--top-k", "1", "--audit"])
+            assert code == 0
+
+            assert default_md.exists()
+            assert default_jsonl.exists()
+            new_md_text = default_md.read_text()
+            assert len(new_md_text) > orig_md_len
+            assert "Testing default scratch persistence" in new_md_text
+            new_jsonl_lines = default_jsonl.read_text().splitlines()
+            assert len(new_jsonl_lines) > orig_jsonl_lines
+            last_record = json.loads(new_jsonl_lines[-1])
+            assert last_record["domain_notes"] == "Testing default scratch persistence"
+        finally:
+            if orig_md_content is not None:
+                default_md.write_text(orig_md_content)
+            elif default_md.exists():
+                default_md.unlink()
+
+            if orig_jsonl_content is not None:
+                default_jsonl.write_text(orig_jsonl_content)
+            elif default_jsonl.exists():
+                default_jsonl.unlink()
+
+    def test_cli_inspect_audit_with_json_fails_gracefully(self, sample_scramble: str, capsys):
+        code = main(["inspect", "-s", sample_scramble, "--phase", "fb", "--audit", "--json"])
+        assert code == 1
+        captured = capsys.readouterr()
+        assert "Error:" in captured.err
+        assert "--audit cannot be used with --json" in captured.err
+
+    def test_cli_inspect_audit_non_interactive_eof_fails_gracefully(self, sample_scramble: str, monkeypatch, capsys):
+        def mock_eof(prompt=""):
+            raise EOFError()
+
+        monkeypatch.setattr("builtins.input", mock_eof)
+
+        code = main(["inspect", "-s", sample_scramble, "--phase", "fb", "--audit"])
+        assert code == 1
+        captured = capsys.readouterr()
+        assert "Error:" in captured.err
+
+
+
 
 

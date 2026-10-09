@@ -886,8 +886,30 @@ def handle_inspect(argv: list[str]) -> int:
         help="Number of candidate solutions to return (default: 5)",
     )
     parser.add_argument("-j", "--json", action="store_true", help="Output raw JSON format")
+    parser.add_argument(
+        "--audit",
+        action="store_true",
+        help="Enter interactive human audit workflow to evaluate candidate fluency on a physical cube.",
+    )
+    parser.add_argument(
+        "--audit-md",
+        type=str,
+        default=None,
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--audit-jsonl",
+        type=str,
+        default=None,
+        help=argparse.SUPPRESS,
+    )
 
     args = parser.parse_args(argv)
+
+    if args.audit and args.json:
+        print("Error: --audit cannot be used with --json (interactive evaluation requires standard output).", file=sys.stderr)
+        return 1
+
     scramble = args.scramble if args.scramble is not None else args.scramble_pos
     if not scramble:
         try:
@@ -932,6 +954,21 @@ def handle_inspect(argv: list[str]) -> int:
         print(result.to_json(indent=2))
     else:
         print(format_inspect_report(result))
+
+    if args.audit:
+        from .inspector.audit import (
+            perform_audit,
+            AuditAbortedError,
+            DEFAULT_AUDIT_MD_PATH,
+            DEFAULT_AUDIT_JSONL_PATH,
+        )
+        md_p = Path(args.audit_md) if args.audit_md else DEFAULT_AUDIT_MD_PATH
+        jsonl_p = Path(args.audit_jsonl) if args.audit_jsonl else DEFAULT_AUDIT_JSONL_PATH
+        try:
+            perform_audit(result, md_path=md_p, jsonl_path=jsonl_p)
+        except AuditAbortedError as e:
+            print(f"Error: {e}", file=sys.stderr)
+            return 1
 
     return 0
 

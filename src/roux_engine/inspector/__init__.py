@@ -9,6 +9,14 @@ from .phase_inspector import (
     CandidateInspection,
     PhaseInspectionResult,
 )
+from .audit import (
+    AuditRecord,
+    AuditAbortedError,
+    perform_audit,
+    record_audit_entry,
+    DEFAULT_AUDIT_MD_PATH,
+    DEFAULT_AUDIT_JSONL_PATH,
+)
 
 __all__ = [
     "PhaseInspector",
@@ -18,4 +26,10 @@ __all__ = [
     "RegripEvent",
     "CandidateInspection",
     "PhaseInspectionResult",
+    "AuditRecord",
+    "AuditAbortedError",
+    "perform_audit",
+    "record_audit_entry",
+    "DEFAULT_AUDIT_MD_PATH",
+    "DEFAULT_AUDIT_JSONL_PATH",
 ]
