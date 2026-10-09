@@ -820,6 +820,122 @@ def handle_flow(argv: list[str]) -> int:
     return 0
 
 
+def handle_inspect(argv: list[str]) -> int:
+    """Handles the roux inspect subcommand."""
+    from .inspector.phase_inspector import inspect_phase, format_inspect_report
+
+    parser = argparse.ArgumentParser(
+        prog="roux inspect",
+        description="Biomechanical and ergonomic candidate inspection tool across Roux phases.",
+    )
+    parser.add_argument(
+        "scramble_pos",
+        nargs="?",
+        type=str,
+        default=None,
+        help="Scramble move sequence string (positional argument)",
+    )
+    parser.add_argument("-s", "--scramble", type=str, default=None, help="Scramble move sequence string")
+    parser.add_argument(
+        "-p", "--phase",
+        type=str,
+        choices=["fb", "sb", "lse", "cmll"],
+        default=None,
+        help="Roux phase to inspect: 'fb', 'sb', 'lse', or 'cmll'",
+    )
+    parser.add_argument(
+        "--style",
+        type=str,
+        default=None,
+        help="Second Block paradigm to drill into: 'free', 'classical', 'square_pair', 'macro'",
+    )
+    parser.add_argument(
+        "--order",
+        type=str,
+        choices=["best", "back_first", "front_first"],
+        default=None,
+        help="Pair order for Second Block: 'best', 'back_first', or 'front_first'",
+    )
+    parser.add_argument(
+        "--target",
+        type=str,
+        default=None,
+        help="LSE micro-step target: 'paths' (default), 'eolr', 'eolr-b', 'standard-eo', '4b', '4c', '1look'",
+    )
+    parser.add_argument("--fb", type=str, default=None, help="Preceding First Block setup move sequence override")
+    parser.add_argument("--sb", type=str, default=None, help="Preceding Second Block setup move sequence override")
+    parser.add_argument("-m", "--moves", type=str, default=None, help="Preceding setup move sequence override")
+    parser.add_argument(
+        "--profile",
+        type=str,
+        choices=["2H", "OH"],
+        default="2H",
+        help="Solving style profile: '2H' (Two-Handed, default) or 'OH' (One-Handed)",
+    )
+    parser.add_argument(
+        "--m-slice-hand",
+        type=str,
+        choices=["right", "left"],
+        default="right",
+        help="Hand used for M-slice turns in 2H mode: 'right' (default) or 'left'",
+    )
+    parser.add_argument(
+        "-k", "--top-k",
+        type=int,
+        default=5,
+        help="Number of candidate solutions to return (default: 5)",
+    )
+    parser.add_argument("-j", "--json", action="store_true", help="Output raw JSON format")
+
+    args = parser.parse_args(argv)
+    scramble = args.scramble if args.scramble is not None else args.scramble_pos
+    if not scramble:
+        try:
+            scramble = input("Enter Scramble: ").strip()
+        except (EOFError, KeyboardInterrupt):
+            return 1
+
+    if not scramble:
+        print("Error: Scramble must be provided.", file=sys.stderr)
+        return 1
+
+    phase = args.phase
+    if not phase:
+        try:
+            phase = input("Enter Phase (fb, sb, lse, cmll): ").strip()
+        except (EOFError, KeyboardInterrupt):
+            return 1
+
+    if not phase:
+        print("Error: --phase must be provided (choices: 'fb', 'sb', 'lse', 'cmll').", file=sys.stderr)
+        return 1
+
+    try:
+        result = inspect_phase(
+            scramble=scramble,
+            phase=phase,
+            top_k=args.top_k,
+            style=args.style,
+            order=args.order,
+            target=args.target,
+            fb_override=args.fb,
+            sb_override=args.sb,
+            moves_override=args.moves,
+            profile=args.profile,
+            m_slice_hand=args.m_slice_hand,
+        )
+    except Exception as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
+
+    if args.json:
+        print(result.to_json(indent=2))
+    else:
+        print(format_inspect_report(result))
+
+    return 0
+
+
 def main(argv: Optional[list[str]] = None) -> int:
     if argv is None:
         argv = sys.argv[1:]
@@ -828,6 +944,8 @@ def main(argv: Optional[list[str]] = None) -> int:
         cmd = argv[0]
         if cmd == "solve":
             return handle_solve(argv[1:])
+        if cmd == "inspect":
+            return handle_inspect(argv[1:])
         if cmd in ("analyze", "segment"):
             return handle_analyze(argv[1:])
         if cmd == "flow":
@@ -840,6 +958,7 @@ def main(argv: Optional[list[str]] = None) -> int:
             print("Usage: roux <subcommand> [options]\n")
             print("Subcommands:")
             print("  solve              Find an optimal Roux solution for a scramble")
+            print("  inspect            Inspect and evaluate candidate moves per Roux phase")
             print("  analyze            Segment and analyze a human Roux solve")
             print("  flow               Evaluate biomechanical flow, E-STM, and stream rhythm")
             print("  generate-fb-pdb    Generate First Block Pattern Database")
