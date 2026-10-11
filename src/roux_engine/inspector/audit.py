@@ -82,9 +82,11 @@ class AuditRecord:
             notes_str = f" | Notes: {self.domain_notes}" if self.domain_notes else ""
             if self.top_candidate:
                 moves_str = self.top_candidate.get("moves_str") or " ".join(self.top_candidate.get("moves", []))
+                insp = self.top_candidate.get("inspection_rotation")
+                insp_str = f"({insp}) " if insp else ""
                 stm = self.top_candidate.get("stm", 0)
                 e_stm = self.top_candidate.get("e_stm", 0.0)
-                top_str = f"Top pick: {moves_str} ({stm} STM, {e_stm:.2f} E-STM)"
+                top_str = f"Top pick: {insp_str}{moves_str} ({stm} STM, {e_stm:.2f} E-STM)"
             else:
                 top_str = "Top pick: Confirmed"
             return (
@@ -121,12 +123,14 @@ class AuditRecord:
             lines.append("### Solver Candidate Rankings:")
             for idx, c in enumerate(self.candidates, 1):
                 m_str = c.get("moves_str") or " ".join(c.get("moves", []))
+                insp = c.get("inspection_rotation")
+                insp_str = f"({insp}) " if insp else ""
                 stm = c.get("stm", 0)
                 e_stm = c.get("e_stm", 0.0)
                 eff = c.get("flow_efficiency", 0.0)
                 grip = c.get("grip", {})
                 grip_summary = format_grip_summary_from_data(grip)
-                lines.append(f"{idx}. `{m_str}` | STM: {stm} | E-STM: {e_stm:.4f} | Flow Eff: {eff:.1f}% | Grip: {grip_summary}")
+                lines.append(f"{idx}. `{insp_str}{m_str}` | STM: {stm} | E-STM: {e_stm:.4f} | Flow Eff: {eff:.1f}% | Grip: {grip_summary}")
                 regrips = grip.get("regrips", []) if isinstance(grip, dict) else []
                 for r in regrips:
                     if isinstance(r, dict):

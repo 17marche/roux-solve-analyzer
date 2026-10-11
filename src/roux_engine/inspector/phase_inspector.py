@@ -903,6 +903,11 @@ def format_inspect_report(result: PhaseInspectionResult) -> str:
     for c in result.candidates:
         lines.append(f"#{c.rank}: {c.moves_str}")
         lines.append(f"    STM: {c.stm} | E-STM: {c.e_stm:.4f} | Flow Efficiency: {c.flow_efficiency:.1f}%")
+        if c.inspection_rotation:
+            lines.append(f"    Inspection:  {c.inspection_rotation}")
+            lines.append(f"    Full Setup:  {c.inspection_rotation} {c.moves_str}")
+        elif result.phase == "fb":
+            lines.append("    Inspection:  None")
         if c.orientation:
             lines.append(f"    Orientation: {c.orientation}")
         lines.append(f"    Grip: {c.grip.summary()}")
