@@ -655,6 +655,52 @@ _DUAL_NEUTRAL_ORIENTATIONS_LIST: Tuple[RouxOrientation, ...] = tuple(
 )
 
 
+_ROTATION_MOVES = ("x", "x2", "x'", "y", "y2", "y'", "z", "z2", "z'")
+
+
+def _build_rotation_transitions() -> Dict[str, Dict[str, str]]:
+    """Precomputes finite state transitions between the 24 canonical orientations."""
+    transitions: Dict[str, Dict[str, str]] = {}
+    for ori in _ROTATIONS_LIST:
+        transitions[ori] = {}
+        for m in _ROTATION_MOVES:
+            c = CubeState()
+            if ori:
+                c.apply_moves(ori)
+            c.apply_move(m)
+            b = Color(int(c.centers[Center.D]))
+            l = Color(int(c.centers[Center.L]))
+            transitions[ori][m] = _ORIENTATIONS_BY_COLOR_PAIR[(b, l)].rotations
+    return transitions
+
+
+_ROTATION_TRANSITIONS: Dict[str, Dict[str, str]] = _build_rotation_transitions()
+
+
+def canonicalize_rotations(rotations: str) -> str:
+    """Canonicalizes whole-cube inspection rotations into the minimal representation.
+
+    Simplifies any whole-cube rotation sequence into the canonical 24-orientation representation
+    in `_ROTATIONS_LIST` (at most 2 moves). Cancels cancelling and identity sequences to empty string.
+    """
+    if not rotations or not rotations.strip():
+        return ""
+
+    cleaned = rotations.replace(",", " ")
+    current = ""
+    for raw_token in cleaned.split():
+        if not raw_token:
+            continue
+        token = MoveParser.normalize_token(raw_token)
+        if token and token[0] in "xyzXYZ":
+            token = token[0].lower() + token[1:]
+            token = MoveParser.normalize_token(token)
+        if token not in _ROTATION_TRANSITIONS[current]:
+            raise ValueError(f"Invalid whole-cube rotation token: {raw_token!r}")
+        current = _ROTATION_TRANSITIONS[current][token]
+    return current
+
+
 def get_all_orientations() -> Sequence[RouxOrientation]:
     """Returns all 24 canonical orientations in the Full Color Neutral set."""
     return _ALL_ORIENTATIONS_LIST
@@ -866,5 +912,6 @@ __all__ = [
     "count_bad_edges",
     "get_m_slice_center_offset",
     "extract_sb_placement",
+    "canonicalize_rotations",
 ]
 

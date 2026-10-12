@@ -26,6 +26,7 @@ from .orientation import (
     count_bad_edges,
     get_m_slice_center_offset,
     extract_sb_placement,
+    canonicalize_rotations,
 )
 
 __all__ = [
@@ -62,4 +63,5 @@ __all__ = [
     "count_bad_edges",
     "get_m_slice_center_offset",
     "extract_sb_placement",
+    "canonicalize_rotations",
 ]

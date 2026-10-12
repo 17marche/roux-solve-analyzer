@@ -4,6 +4,7 @@ import pytest
 from roux_engine.core.cube import CubeState
 from roux_engine.core.constants import Color
 from roux_engine.solver import FBSolution, solve_fb
+from roux_engine.solver.ida_star import normalize_rotations
 from roux_engine.solver.symmetry import CanonicalSymmetry, get_symmetry, is_fb_solved_for_symmetry
 
 
@@ -327,4 +328,29 @@ class TestDatasetIntegrationAndPerformance:
         assert sols_6[0].move_count <= 6
         assert_physically_solves_fb(c6, sols_6[0])
         assert t6_ms < 1.0, f"6-move optimal search took {t6_ms:.2f}ms, expected < 1.0ms"
+
+
+class TestInspectionRotationNormalization:
+    """Slice 6: Whole-cube inspection rotation normalization and delegation."""
+
+    def test_normalize_rotations_delegation(self):
+        """normalize_rotations delegates to canonicalize_rotations and produces <= 2 moves."""
+        assert normalize_rotations("") == ""
+        assert normalize_rotations("x2 y2 x'") == "x' y2"
+        assert normalize_rotations("x2 y2 x") == "x y2"
+        assert normalize_rotations("x2 y2 x2") == "y2"
+        assert normalize_rotations("x2 y x2") == "y'"
+        assert normalize_rotations("x x'") == ""
+        assert normalize_rotations("y2 y2") == ""
+
+    def test_fb_solver_inspection_rotations_at_most_two_moves(self):
+        """All inspection rotations returned by solve_fb across orientations have at most 2 moves."""
+        scramble = "D F r U M"
+        solutions = solve_fb(scramble, k=10)
+        assert len(solutions) > 0
+        for sol in solutions:
+            # Inspection rotation must be at most 2 moves
+            assert len(sol.inspection_rotation.split()) <= 2
+            # Must physically solve First Block
+            assert_physically_solves_fb(CubeState().apply_moves(scramble), sol)
 

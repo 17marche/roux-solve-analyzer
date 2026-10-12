@@ -24,6 +24,7 @@ from roux_engine.core.orientation import (
     count_bad_edges,
     get_m_slice_center_offset,
     extract_sb_placement,
+    canonicalize_rotations,
 )
 
 
@@ -565,5 +566,30 @@ class TestTopLevelPhasePredicates:
             is_fb_solved(c, orientation="invalid_orient")
 
 
+class TestInspectionRotationCanonicalization:
+    """Seam 6: Whole-Cube Inspection Rotation Canonicalization."""
 
+    def test_empty_and_cancelling_sequences(self):
+        """Identity and cancelling sequences resolve to empty string."""
+        assert canonicalize_rotations("") == ""
+        assert canonicalize_rotations("   ") == ""
+        assert canonicalize_rotations("x x'") == ""
+        assert canonicalize_rotations("y2 y2") == ""
+        assert canonicalize_rotations("z' z") == ""
 
+    def test_minimal_canonical_representation(self):
+        """Three-move sequence x2 y2 x' canonicalizes to minimal 2-move representation x' y2."""
+        assert canonicalize_rotations("x2 y2 x'") == "x' y2"
+
+    def test_commutative_equivalents(self):
+        """Commutative rotation sequences simplify to their canonical representation."""
+        assert canonicalize_rotations("x2 y2 x") == "x y2"
+        assert canonicalize_rotations("x2 y2 x2") == "y2"
+        assert canonicalize_rotations("x2 y x2") == "y'"
+
+    def test_all_24_canonical_orientations_idempotent(self):
+        """All 24 canonical orientations in _ROTATIONS_LIST are idempotent under canonicalization."""
+        for o in get_all_orientations():
+            assert canonicalize_rotations(o.rotations) == o.rotations
+            # Each canonical representation has at most 2 moves
+            assert len(o.rotations.split()) <= 2

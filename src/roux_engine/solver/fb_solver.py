@@ -14,6 +14,7 @@ import numpy as np
 
 from ..core.constants import Color
 from ..core.cube import CubeState
+from ..core.orientation import canonicalize_rotations
 from ..ergonomics.models import HandProfile
 from .fb_indexer import FBIndexer
 from .fb_pdb import FBPDB
@@ -83,35 +84,8 @@ def _build_allowed_moves() -> Tuple[Tuple[int, ...], ...]:
 
 
 def normalize_rotations(rotations: str) -> str:
-    """Normalizes inspection rotations, canceling adjacent rotations on the same axis."""
-    if not rotations.strip():
-        return ""
-    turn_val = {
-        "x": 1, "x2": 2, "x'": 3,
-        "y": 1, "y2": 2, "y'": 3,
-        "z": 1, "z2": 2, "z'": 3,
-    }
-    rot_map = {
-        "x": {1: "x", 2: "x2", 3: "x'"},
-        "y": {1: "y", 2: "y2", 3: "y'"},
-        "z": {1: "z", 2: "z2", 3: "z'"},
-    }
-    stack: List[Tuple[str, int]] = []
-    for token in rotations.split():
-        if not token:
-            continue
-        axis = token[0].lower()
-        if axis not in rot_map or token not in turn_val:
-            continue
-        val = turn_val[token]
-        if stack and stack[-1][0] == axis:
-            prev_axis, prev_val = stack.pop()
-            new_val = (prev_val + val) % 4
-            if new_val != 0:
-                stack.append((axis, new_val))
-        else:
-            stack.append((axis, val))
-    return " ".join(rot_map[axis][val] for axis, val in stack)
+    """Normalizes inspection rotations by delegating to canonicalize_rotations."""
+    return canonicalize_rotations(rotations)
 
 
 # -----------------------------------------------------------------------------
