@@ -108,6 +108,46 @@ class TestFBTopKErgonomicRanking:
         for s in sols:
             assert s.e_stm is not None
 
+    def test_solve_fb_inspection_pre_grip_eliminates_opening_regrip(self):
+        # Scramble #11106 has candidate F2 D R D R B'
+        scramble = "F L R2 U2 L2 B' F' L2 F' D2 B' U2 B U R2 F L' U B' R2"
+        sols = solve_fb(scramble, top_k=5, rank_by="e_stm")
+        matching = [s for s in sols if s.moves == ["F2", "D", "R", "D", "R", "B'"]]
+        assert len(matching) == 1
+        cand = matching[0]
+        # With pre-grip, E-STM is ~5.556 (0 regrips), eliminating +2.0 phantom regrip penalty
+        assert cand.e_stm is not None
+        assert cand.e_stm < 6.0
+
+    def test_phase_inspector_fb_uses_pre_grip_while_others_default_home(self):
+        from roux_engine.inspector.phase_inspector import PhaseInspector
+        inspector = PhaseInspector()
+
+        # FB inspection on #11106: candidate F2 D R D R B' has 0 regrips and starts in R_PRIME_AWAY
+        scramble = "F L R2 U2 L2 B' F' L2 F' D2 B' U2 B U R2 F L' U B' R2"
+        fb_res = inspector.inspect(scramble, phase="fb", top_k=5)
+        matching = [c for c in fb_res.candidates if c.moves == ["F2", "D", "R", "D", "R", "B'"]]
+        assert len(matching) == 1
+        cand = matching[0]
+        assert cand.grip.regrip_count == 0
+        assert cand.grip.start_grip == "R_PRIME_AWAY"
+        assert cand.e_stm < 6.0
+
+        # Isolated candidate evaluation for non-FB phases defaults to HOME
+        from roux_engine.ergonomics.models import HandProfile
+        prof = HandProfile()
+        cand_eval = inspector._evaluate_candidate(
+            rank=1,
+            moves=["F2", "D", "R", "D", "R", "B'"],
+            orientation="WHITE-RED",
+            profile=prof,
+        )
+        # Default starting grip HOME forces a regrip before F2
+        assert cand_eval.grip.regrip_count == 1
+        assert cand_eval.grip.start_grip == "HOME"
+        assert cand_eval.e_stm > 7.0
+
+
 
 class TestSBTopKErgonomicRanking:
     """Seam 5: SBSolver Top-K Candidate Search with rank_by='e_stm' | 'stm'."""

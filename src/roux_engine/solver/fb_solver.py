@@ -351,7 +351,7 @@ class FBSolver:
         if rank_by == "e_stm":
             scored_candidates: List[FBSolution] = []
             for cand in candidates:
-                score = self.flow_scorer.score_moves(cand.moves, profile=prof)
+                score = self.flow_scorer.score_moves(cand.moves, profile=prof, initial_grip=None)
                 scored_candidates.append(
                     FBSolution(
                         moves=cand.moves,

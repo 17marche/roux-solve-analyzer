@@ -133,7 +133,7 @@ class StreamPauseDetector:
     def calculate_metrics(
         self,
         stream: Union[str, Sequence[Union[str, MoveEvent, Dict[str, Any]]]],
-        initial_grip: GripState = GripState.HOME,
+        initial_grip: Optional[GripState] = GripState.HOME,
     ) -> StreamMetrics:
         """Computes pace-invariant turning ratio, rhythm CV, and classified pause events."""
         events = self.parse_stream(stream)

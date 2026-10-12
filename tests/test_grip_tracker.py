@@ -220,4 +220,41 @@ class TestGripTrackerDPMinimization:
         assert res.steps[0].grip_during in (GripState.R_AWAY, GripState.R_PRIME_AWAY)
 
 
+class TestInspectionPreGrip:
+    """Seam: Inspection Pre-Grip and away-grip strain calibration."""
+
+    def test_grip_strain_calibration_prefers_r_prime_away(self):
+        tracker = GripTracker()
+        assert tracker._GRIP_STRAIN[GripState.HOME] == 0.0
+        assert tracker._GRIP_STRAIN[GripState.R_PRIME_AWAY] == 0.10
+        assert tracker._GRIP_STRAIN[GripState.R_AWAY] == 0.15
+        assert tracker._GRIP_STRAIN[GripState.R_PRIME_AWAY] < tracker._GRIP_STRAIN[GripState.R_AWAY]
+
+    def test_initial_grip_none_allows_f2_opening_with_zero_regrips(self):
+        tracker = GripTracker()
+        moves = ["F2", "D", "R", "D", "R", "B'"]
+
+        # Default or HOME initial grip incurs a regrip because F2 is blocked from HOME
+        res_home = tracker.track(moves, initial_grip=GripState.HOME)
+        assert res_home.regrip_count == 1
+        assert res_home.initial_grip == GripState.HOME
+        assert res_home.steps[0].regrip
+
+        # Inspection Pre-Grip (initial_grip=None) selects R_PRIME_AWAY with 0 regrips
+        res_pre = tracker.track(moves, initial_grip=None)
+        assert res_pre.regrip_count == 0
+        assert res_pre.initial_grip == GripState.R_PRIME_AWAY
+        assert res_pre.final_grip == GripState.R_AWAY
+        assert not any(s.regrip for s in res_pre.steps)
+
+    def test_initial_grip_none_empty_sequence(self):
+        tracker = GripTracker()
+        res = tracker.track([], initial_grip=None)
+        assert res.regrip_count == 0
+        assert res.steps == []
+        assert res.initial_grip == GripState.HOME
+        assert res.final_grip == GripState.HOME
+
+
+
 

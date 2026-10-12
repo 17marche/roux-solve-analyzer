@@ -25,7 +25,7 @@ class TestPhaseInspectorFB:
         assert "E-STM:" in out
         assert "Flow Efficiency:" in out
         assert "Grip:" in out
-        assert "Start in HOME" in out
+        assert "Start in " in out
 
     def test_kinematic_grip_telemetry_zero_regrips(self, capsys):
         # Sequence with 0 regrips: r U R' U2 R' U'
@@ -203,7 +203,7 @@ class TestPhaseInspectorFlagsAndJson:
         assert cand["e_stm"] > 0
         assert cand["flow_efficiency"] > 0
         assert "grip" in cand
-        assert cand["grip"]["start"] == "HOME"
+        assert cand["grip"]["start"] in ("HOME", "R_AWAY", "R_PRIME_AWAY")
         assert "regrip_count" in cand["grip"]
         assert "regrips" in cand["grip"]
 

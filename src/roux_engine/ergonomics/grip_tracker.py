@@ -107,8 +107,8 @@ class GripTracker:
 
     _GRIP_STRAIN: Dict[GripState, float] = {
         GripState.HOME: 0.0,
-        GripState.R_AWAY: 0.1,
-        GripState.R_PRIME_AWAY: 0.15,
+        GripState.R_PRIME_AWAY: 0.10,
+        GripState.R_AWAY: 0.15,
     }
 
     _REGRIP_BASE_COST: float = 1000.0
@@ -116,7 +116,7 @@ class GripTracker:
     def track(
         self,
         moves: Union[str, Sequence[Union[str, MoveEvent]]],
-        initial_grip: GripState = GripState.HOME,
+        initial_grip: Optional[GripState] = GripState.HOME,
     ) -> GripTrackingResult:
         """Finds the optimal sequence of grip transitions minimizing mechanical regrips."""
         if isinstance(moves, str):
@@ -132,24 +132,29 @@ class GripTracker:
         tokens = [t for t in tokens if t]
 
         if not tokens:
+            resolved_initial = initial_grip if initial_grip is not None else GripState.HOME
             return GripTrackingResult(
                 regrip_count=0,
                 steps=[],
-                initial_grip=initial_grip,
-                final_grip=initial_grip,
+                initial_grip=resolved_initial,
+                final_grip=resolved_initial,
             )
 
         all_grips = [
             GripState.HOME,
-            GripState.R_AWAY,
             GripState.R_PRIME_AWAY,
+            GripState.R_AWAY,
         ]
 
-        # Initial state: the hand starts in initial_grip before any moves
+        # Initial state: either start in initial_grip or allow pre-grip with baseline strain
         current_dp: Dict[GripState, Tuple[float, List[GripStep]]] = {
             g: (float("inf"), []) for g in all_grips
         }
-        current_dp[initial_grip] = (0.0, [])
+        if initial_grip is not None:
+            current_dp[initial_grip] = (0.0, [])
+        else:
+            for g in all_grips:
+                current_dp[g] = (self._GRIP_STRAIN[g], [])
 
         for move in tokens:
             next_dp: Dict[GripState, Tuple[float, List[GripStep]]] = {
@@ -200,14 +205,20 @@ class GripTracker:
                 best_steps = steps
 
         if best_grip is None:
-            best_grip = initial_grip
+            best_grip = initial_grip if initial_grip is not None else GripState.HOME
             best_steps = []
+
+        resolved_initial = (
+            best_steps[0].grip_before
+            if initial_grip is None and best_steps
+            else (initial_grip if initial_grip is not None else GripState.HOME)
+        )
 
         regrip_count = sum(1 for s in best_steps if s.regrip)
         return GripTrackingResult(
             regrip_count=regrip_count,
             steps=best_steps,
-            initial_grip=initial_grip,
+            initial_grip=resolved_initial,
             final_grip=best_grip,
         )
 

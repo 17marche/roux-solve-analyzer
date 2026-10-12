@@ -68,6 +68,7 @@ class GripTelemetry:
 def compute_grip_telemetry(
     moves: Union[str, Sequence[str]],
     tracker: Optional[GripTracker] = None,
+    initial_grip: Optional[GripState] = GripState.HOME,
 ) -> GripTelemetry:
     """Computes wrist grip orientation and forced regrip events for a move sequence."""
     if tracker is None:
@@ -75,14 +76,15 @@ def compute_grip_telemetry(
 
     tokens = moves.split() if isinstance(moves, str) else list(moves)
     if not tokens:
+        resolved_init = initial_grip if initial_grip is not None else GripState.HOME
         return GripTelemetry(
-            start_grip=GripState.HOME.value,
-            end_grip=GripState.HOME.value,
+            start_grip=resolved_init.value,
+            end_grip=resolved_init.value,
             regrip_count=0,
             regrips=[],
         )
 
-    res: GripTrackingResult = tracker.track(tokens, initial_grip=GripState.HOME)
+    res: GripTrackingResult = tracker.track(tokens, initial_grip=initial_grip)
     regrip_events: List[RegripEvent] = []
 
     for idx, step in enumerate(res.steps):
@@ -109,9 +111,10 @@ def compute_grip_telemetry(
 def format_grip_telemetry(
     moves: Union[str, Sequence[str]],
     tracker: Optional[GripTracker] = None,
+    initial_grip: Optional[GripState] = GripState.HOME,
 ) -> List[str]:
     """Generates formatted telemetry lines for display."""
-    telem = compute_grip_telemetry(moves, tracker=tracker)
+    telem = compute_grip_telemetry(moves, tracker=tracker, initial_grip=initial_grip)
     lines = [f"Grip: {telem.summary()}"]
     for ev in telem.regrips:
         lines.append(f"  {ev.format()}")
@@ -302,11 +305,12 @@ class PhaseInspector:
         label: Optional[str] = None,
         substeps: Optional[Dict[str, int]] = None,
         inspection_rotation: Optional[str] = None,
+        initial_grip: Optional[GripState] = GripState.HOME,
     ) -> CandidateInspection:
         """Scores candidate moves through flow scoring and grip tracking."""
         move_list = list(moves)
-        score = self.flow_scorer.score_moves(move_list, profile=profile)
-        telem = compute_grip_telemetry(move_list, tracker=self.grip_tracker)
+        score = self.flow_scorer.score_moves(move_list, profile=profile, initial_grip=initial_grip)
+        telem = compute_grip_telemetry(move_list, tracker=self.grip_tracker, initial_grip=initial_grip)
         return CandidateInspection(
             rank=rank,
             moves=move_list,
@@ -338,6 +342,7 @@ class PhaseInspector:
                 orientation=sol.orientation,
                 profile=profile,
                 inspection_rotation=sol.inspection_rotation if sol.inspection_rotation else None,
+                initial_grip=None,
             )
             candidates.append(cand)
 

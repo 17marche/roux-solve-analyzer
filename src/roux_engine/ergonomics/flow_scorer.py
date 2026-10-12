@@ -99,7 +99,7 @@ class FlowScorer:
     def _evaluate_events(
         self,
         events: List[MoveEvent],
-        initial_grip: GripState = GripState.HOME,
+        initial_grip: Optional[GripState] = GripState.HOME,
         metrics: Optional[StreamMetrics] = None,
         matrix: Optional[TransitionMatrix] = None,
     ) -> FlowScore:
@@ -278,7 +278,7 @@ class FlowScorer:
         moves: Union[str, Sequence[Union[str, MoveEvent, Dict[str, Any]]]],
         tempo: Optional[float] = None,
         profile: Optional[Union[str, HandProfile]] = None,
-        initial_grip: GripState = GripState.HOME,
+        initial_grip: Optional[GripState] = GripState.HOME,
         pause_detector: Optional[StreamPauseDetector] = None,
     ) -> FlowScore:
         """Evaluates biomechanical flow, Effective STM, and smart-cube rhythm.
@@ -368,7 +368,7 @@ class FlowScorer:
     def score_moves(
         self,
         moves: Union[str, Sequence[Union[str, MoveEvent]]],
-        initial_grip: GripState = GripState.HOME,
+        initial_grip: Optional[GripState] = GripState.HOME,
         tempo: Optional[float] = None,
         profile: Optional[Union[str, HandProfile]] = None,
     ) -> FlowScore:
@@ -378,7 +378,7 @@ class FlowScorer:
     def score_stream(
         self,
         stream: Union[str, Sequence[Union[str, MoveEvent, Dict[str, Any]]]],
-        initial_grip: GripState = GripState.HOME,
+        initial_grip: Optional[GripState] = GripState.HOME,
         pause_detector: Optional[StreamPauseDetector] = None,
         tempo: Optional[float] = None,
         profile: Optional[Union[str, HandProfile]] = None,

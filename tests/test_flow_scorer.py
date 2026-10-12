@@ -410,6 +410,28 @@ class TestFlowScorerUnifiedInterface:
         score_sb_left = scorer.score("R U R' U'", profile=profile_left)
         assert score_sb_right.e_stm == score_sb_left.e_stm
 
+    def test_inspection_pre_grip_evaluation(self):
+        scorer = FlowScorer()
+        moves = "F2 D R D R B'"
+
+        # Default / HOME initial grip incurs a regrip penalty before move 1 (+2.0 E-STM)
+        score_home = scorer.score(moves, initial_grip=GripState.HOME)
+        assert score_home.regrip_count == 1
+        assert score_home.per_move_analysis[0].regrip is True
+
+        # Pre-grip (initial_grip=None) eliminates regrip penalty
+        score_pre = scorer.score(moves, initial_grip=None)
+        assert score_pre.regrip_count == 0
+        assert not any(m.regrip for m in score_pre.per_move_analysis)
+        assert score_pre.e_stm < score_home.e_stm
+        assert abs(score_home.e_stm - score_pre.e_stm - 2.0) < 1e-4
+
+        # score_moves delegate behaves identically
+        score_moves_pre = scorer.score_moves(moves, initial_grip=None)
+        assert score_moves_pre.regrip_count == 0
+        assert score_moves_pre.e_stm == score_pre.e_stm
+
+
 
 
 
