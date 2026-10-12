@@ -668,9 +668,9 @@ def _build_rotation_transitions() -> Dict[str, Dict[str, str]]:
             if ori:
                 c.apply_moves(ori)
             c.apply_move(m)
-            b = Color(int(c.centers[Center.D]))
-            l = Color(int(c.centers[Center.L]))
-            transitions[ori][m] = _ORIENTATIONS_BY_COLOR_PAIR[(b, l)].rotations
+            bottom_color = Color(int(c.centers[Center.D]))
+            left_color = Color(int(c.centers[Center.L]))
+            transitions[ori][m] = _ORIENTATIONS_BY_COLOR_PAIR[(bottom_color, left_color)].rotations
     return transitions
 
 
